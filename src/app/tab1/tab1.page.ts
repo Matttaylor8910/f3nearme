@@ -36,7 +36,7 @@ const BOISE_COORDS: Coords = {
   longitude: -116.2023,
 };
 
-const MILES_OPTIONS = [10, 20, 30, 40, 50];
+const MILES_OPTIONS = [10, 20, 30, 50, 100];
 const DEFAULT_LIMIT = 30;
 
 const MIN_FILTER_TEXT_LENGTH = 3;
