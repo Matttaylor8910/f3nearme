@@ -35,7 +35,7 @@ const BOISE_COORDS: Coords = {
   longitude: -116.2023,
 };
 
-const MAX_MILES = 30;
+const MAX_MILES = 50;
 
 const DAYS = [
   'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
