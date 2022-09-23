@@ -77,7 +77,7 @@ export class Tab1Page {
   }
 
   get filterTooShort(): boolean {
-    return this.filterText?.length < MIN_FILTER_TEXT_LENGTH;
+    return this.filterText && this.filterText?.length < MIN_FILTER_TEXT_LENGTH;
   }
 
   get emptyText(): string {

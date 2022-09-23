@@ -12,6 +12,7 @@
   </ion-toolbar>
   <ion-toolbar>
     <ion-searchbar
+      mode="ios"
       [(ngModel)]="filterText"
       [debounce]="500"
       (ionChange)="setNearbyBeatdowns()"
