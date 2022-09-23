@@ -154,7 +154,6 @@ export class Tab1Page {
    * Handle successfully getting the user's location
    */
   onGeolocationSuccess(position: GeolocationPosition) {
-    console.log(position);
     const {latitude, longitude} = position.coords;
     this.myLocation = {latitude, longitude};
     this.setNearbyBeatdowns();
