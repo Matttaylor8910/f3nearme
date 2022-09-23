@@ -1,4 +1,5 @@
 import {Component} from '@angular/core';
+import {ActionSheetController} from '@ionic/angular';
 
 import {HttpService} from '../services/http.service';
 
@@ -35,7 +36,10 @@ const BOISE_COORDS: Coords = {
   longitude: -116.2023,
 };
 
-const MAX_MILES = 50;
+const MILES_OPTIONS = [10, 20, 30, 40, 50];
+const DEFAULT_LIMIT = 30;
+
+const MIN_FILTER_TEXT_LENGTH = 3;
 
 const DAYS = [
   'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
@@ -50,18 +54,41 @@ export class Tab1Page {
   allBDs: Beatdown[];
   nearbyMap = new Map<string, Beatdown[]>;
   days: Day[];
-  limit = MAX_MILES;
+  limit = this.loadLimit();
+  showRegion = false;
+  filterText: string;
 
   myLocation: Coords;
   locationFailure = false;
 
   constructor(
       private readonly http: HttpService,
+      private readonly actionSheetController: ActionSheetController,
   ) {}
 
   ngOnInit() {
     this.loadFromCache();
     this.loadBeatdowns();
+  }
+
+  get title(): string {
+    if (this.filterText) return 'Filtered Results';
+    return this.locationFailure ? 'Near Boise, ID' : 'Nearby';
+  }
+
+  get filterTooShort(): boolean {
+    return this.filterText?.length < MIN_FILTER_TEXT_LENGTH;
+  }
+
+  get emptyText(): string {
+    if (this.filterTooShort) {
+      return `Your filter needs to be at least ${
+          MIN_FILTER_TEXT_LENGTH} characters`;
+    }
+
+    return this.filterText ?
+        `No F3 workouts matching "${this.filterText}"` :
+        `No F3 workouts within ${this.limit} miles of your location`;
   }
 
   /**
@@ -148,6 +175,17 @@ export class Tab1Page {
    * This will act as a reset as well
    */
   setNearbyBeatdowns() {
+    // no-op if we're not ready
+    if (!this.allBDs || !this.myLocation) return;
+
+    // don't try to build up the days with too small of a filter text for
+    // performance reasons
+    if (this.filterTooShort) {
+      this.days = [];
+      return;
+    }
+
+    const regionSet = new Set<string>();
     this.nearbyMap = new Map<string, Beatdown[]>();
     this.days = [];
 
@@ -163,7 +201,7 @@ export class Tab1Page {
       // side effect, but idc, we need the milesFromMe
       bd.milesFromMe = dist;
 
-      return dist < MAX_MILES;
+      return this.filterText ? this.appliesToFilter(bd) : dist < this.limit;
     });
 
     // sort the bds by distance from your location
@@ -171,8 +209,12 @@ export class Tab1Page {
     nearby.forEach(bd => {
       const bds = this.nearbyMap.get(bd.dayOfWeek) ?? [];
       bds.push(bd);
+      regionSet.add(bd.region);
       this.nearbyMap.set(bd.dayOfWeek, bds);
     });
+
+    // only show region info if there are multiple regions displayed
+    this.showRegion = regionSet.size > 1;
 
     // now that we have the sorted filtered list we care about, build out
     // the schedule of days
@@ -236,6 +278,16 @@ export class Tab1Page {
   }
 
   /**
+   * Return true if the provided beatdown applies to the filter
+   */
+  appliesToFilter(bd: Beatdown): boolean {
+    const {name, address, region, notes, type} = bd;
+    return [name, address, region, notes, type].some(field => {
+      return field?.toLowerCase().includes(this.filterText?.toLowerCase());
+    });
+  }
+
+  /**
    * Return a pretty string to represent the day offset from today
    */
   getDateDisplay(today: Date, offset: number) {
@@ -252,6 +304,45 @@ export class Tab1Page {
     var result = new Date(date);
     result.setDate(result.getDate() + days);
     return result;
+  }
+
+  /**
+   * Present a sheet to update the number of miles to filter to
+   */
+  async presentActionSheet() {
+    // present the miles option in an action sheet
+    const actionSheet = await this.actionSheetController.create({
+      header: 'How many miles?',
+      buttons: [
+        ...MILES_OPTIONS.map(miles => {
+          return {text: `${miles} miles`, role: `${miles}`};
+        }),
+        {text: 'Cancel', role: 'cancel'},
+      ],
+    });
+    await actionSheet.present();
+
+    // set the limit so long as cancel was not clicked
+    const {role} = await actionSheet.onDidDismiss();
+    if (role !== 'cancel') {
+      this.updateLimit(Number(role));
+    }
+  }
+
+  /**
+   * Save a given limit and re-load bds
+   */
+  updateLimit(limit: number) {
+    this.limit = limit;
+    localStorage.setItem('miles', `${limit}`);
+    this.setNearbyBeatdowns();
+  }
+
+  /**
+   * Returns the last limit (from cache) or the default
+   */
+  loadLimit(): number {
+    return Number(localStorage.getItem('miles') || DEFAULT_LIMIT);
   }
 
   /**

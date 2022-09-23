@@ -1,8 +1,22 @@
 <ion-header [translucent]="true">
   <ion-toolbar>
     <ion-title>
-      {{ locationFailure ? 'Near Boise, ID' : 'Nearby' }}
+      {{ title }}
     </ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="presentActionSheet()" *ngIf="!filterText">
+        {{ limit }} miles
+        <ion-icon name="chevron-down"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+  <ion-toolbar>
+    <ion-searchbar
+      [(ngModel)]="filterText"
+      [debounce]="500"
+      (ionChange)="setNearbyBeatdowns()"
+      placeholder="Find a workout">
+    </ion-searchbar>
   </ion-toolbar>
 </ion-header>
 
@@ -10,7 +24,7 @@
   <ion-header collapse="condense">
     <ion-toolbar>
       <ion-title size="large">
-        {{ locationFailure ? 'Near Boise, ID' : 'Nearby' }}
+        {{ title }}
       </ion-title>
     </ion-toolbar>
   </ion-header>
@@ -32,23 +46,26 @@
             <ion-text color="dark">{{ bd.milesFromMe | number:'1.1-1' }} mi</ion-text>
              • {{ bd.timeString }}
           </ion-card-subtitle>
-          <ion-card-title>{{ bd.name }}</ion-card-title>
+          <ion-card-title [innerHtml]="bd.name | highlight:filterText"></ion-card-title>
         </ion-card-header>
         <ion-card-content>
-          <p><b>Type:</b> {{ bd.type}}</p>
+          <p *ngIf="showRegion"><b>Region:</b>&nbsp;<span [innerHtml]="bd.region | highlight:filterText"></span></p>
+          <p><b>Type:</b>&nbsp;<span [innerHtml]="bd.type | highlight:filterText"></span></p>
           <p>
-            <a href="https://www.google.com/maps/dir/?api=1&destination={{bd.address}}" target="_blank">
-              {{ bd.address }}
+            <a
+              target="_blank"
+              href="https://www.google.com/maps/dir/?api=1&destination={{bd.address}}"
+              [innerHtml]="bd.address | highlight:filterText">
             </a>
           </p>
-          <p>{{ bd.notes }}</p>
+          <p [innerHtml]="bd.notes | highlight:filterText"></p>
         </ion-card-content>
       </ion-card>
     </div>
 
     <ion-text color="medium" *ngIf="days.length === 0">
       <h3 class="pad-left">
-        No F3 workouts within {{ limit }} miles of your location
+        {{ emptyText }}
       </h3>
     </ion-text>
 

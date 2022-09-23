@@ -25,6 +25,15 @@
 @import "~@ionic/angular/css/text-transformation.css";
 @import "~@ionic/angular/css/flex-utils.css";
 
+.pad-left {
+  padding-left: 16px;
+}
+
+.highlight {
+  background: #bad7fb;
+  color: #333;
+}
+
 .center-container,
 .empty-container,
 .spinner-container {
