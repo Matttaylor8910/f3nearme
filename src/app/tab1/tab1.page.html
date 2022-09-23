@@ -9,9 +9,27 @@
 <ion-content [fullscreen]="true">
   <ion-header collapse="condense">
     <ion-toolbar>
-      <ion-title size="large">Tab 1</ion-title>
+      <ion-title size="large">Nearby</ion-title>
     </ion-toolbar>
   </ion-header>
 
-  <app-explore-container name="Tab 1 page"></app-explore-container>
+  <div *ngIf="nearby; else loading">
+    <ion-card *ngFor="let bd of nearby">
+      <ion-card-header>
+        <ion-card-subtitle>{{ bd.timeString }}</ion-card-subtitle>
+        <ion-card-title>{{ bd.name }}</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        {{ bd.notes }}
+      </ion-card-content>
+    </ion-card>
+  </div>
+
 </ion-content>
+
+<!-- loading spinner -->
+<ng-template #loading>
+  <div class="spinner-container">
+    <ion-spinner></ion-spinner>
+  </div>
+</ng-template>
