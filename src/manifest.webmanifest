@@ -1,0 +1,15 @@
+{
+  "background_color": "black",
+  "description": "F3 Beatdown Finder",
+  "display": "fullscreen",
+  "icons": [
+    {
+      "src": "assets/f3.png",
+      "sizes": "225x225",
+      "type": "image/png"
+    }
+  ],
+  "name": "F3 Beatdowns",
+  "short_name": "F3 BDs",
+  "start_url": "/"
+}
