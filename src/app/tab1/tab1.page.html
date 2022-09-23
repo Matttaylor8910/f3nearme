@@ -1,7 +1,7 @@
 <ion-header [translucent]="true">
   <ion-toolbar>
     <ion-title>
-      Nearby
+      {{ locationFailure ? 'Near Boise, ID' : 'Nearby' }}
     </ion-title>
   </ion-toolbar>
 </ion-header>
@@ -9,20 +9,55 @@
 <ion-content [fullscreen]="true">
   <ion-header collapse="condense">
     <ion-toolbar>
-      <ion-title size="large">Nearby</ion-title>
+      <ion-title size="large">
+        {{ locationFailure ? 'Near Boise, ID' : 'Nearby' }}
+      </ion-title>
     </ion-toolbar>
   </ion-header>
 
-  <div *ngIf="nearby; else loading">
-    <ion-card *ngFor="let bd of nearby">
-      <ion-card-header>
-        <ion-card-subtitle>{{ bd.timeString }}</ion-card-subtitle>
-        <ion-card-title>{{ bd.name }}</ion-card-title>
-      </ion-card-header>
-      <ion-card-content>
-        {{ bd.notes }}
-      </ion-card-content>
-    </ion-card>
+  <div *ngIf="days; else loading">
+    <div *ngFor="let day of days">
+      <ion-text color="medium" *ngIf="locationFailure && days.length > 0">
+        <h4 class="pad-left">
+          Couldn't load location, defaulting to downtown Boise
+        </h4>
+      </ion-text>
+
+      <h2 class="pad-left">
+        {{ day.dateDisplay }}
+      </h2>
+      <ion-card *ngFor="let bd of day.beatdowns">
+        <ion-card-header>
+          <ion-card-subtitle>
+            <ion-text color="dark">{{ bd.milesFromMe | number:'1.1-1' }} mi</ion-text>
+             • {{ bd.timeString }}
+          </ion-card-subtitle>
+          <ion-card-title>{{ bd.name }}</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <p><b>Type:</b> {{ bd.type}}</p>
+          <p>
+            <a href="https://www.google.com/maps/dir/?api=1&destination={{bd.address}}" target="_blank">
+              {{ bd.address }}
+            </a>
+          </p>
+          <p>{{ bd.notes }}</p>
+        </ion-card-content>
+      </ion-card>
+    </div>
+
+    <ion-text color="medium" *ngIf="days.length === 0">
+      <h3 class="pad-left">
+        No F3 workouts within {{ limit }} miles of your location
+      </h3>
+    </ion-text>
+
+    <ion-infinite-scroll threshold="100px" (ionInfinite)="loadOneWeek($event)" [disabled]="days.length === 0">
+      <ion-infinite-scroll-content
+        loadingSpinner="crescent"
+        loadingText="Loading more...">
+      </ion-infinite-scroll-content>
+    </ion-infinite-scroll>
   </div>
 
 </ion-content>
