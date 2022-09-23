@@ -1,4 +1,4 @@
-# f3nearme
+# F3 Near Me
 
 Discover F3 workout locations near you. Find a free, outdoor, peer-led workout group for men today.
 
