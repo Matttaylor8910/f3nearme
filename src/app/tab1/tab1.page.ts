@@ -151,6 +151,7 @@ export class Tab1Page {
     this.nearbyMap = new Map<string, Beatdown[]>();
     this.days = [];
 
+    // filter down to the bds within N miles (as the crow flies)
     const nearby = this.allBDs.filter(bd => {
       const dist = this.distance(
           bd.lat,
@@ -165,7 +166,7 @@ export class Tab1Page {
       return dist < MAX_MILES;
     });
 
-    // sort the near
+    // sort the bds by distance from your location
     nearby.sort((a, b) => a.milesFromMe - b.milesFromMe);
     nearby.forEach(bd => {
       const bds = this.nearbyMap.get(bd.dayOfWeek) ?? [];
