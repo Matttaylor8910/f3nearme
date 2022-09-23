@@ -1,8 +1,9 @@
 {
   "name": "F3 Beatdowns",
   "short_name": "F3 BDs",
+  "theme_color": "#000000",
+  "background_color": "#000000",
   "display": "standalone",
-  "description": "F3 Beatdown Finder",
   "scope": "./",
   "start_url": "./",
   "icons":[
@@ -15,7 +16,5 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff"
+  ]
 }
