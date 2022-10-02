@@ -1,5 +1,5 @@
 {
-  "name": "Tabs Starter",
+  "name": "F3 Near Me",
   "baseref": "main",
   "tarignore": [
     "node_modules",

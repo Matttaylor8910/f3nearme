@@ -1,7 +1,7 @@
 import {Component} from '@angular/core';
 import {ActionSheetController} from '@ionic/angular';
 
-import {HttpService} from '../services/http.service';
+import {HttpService} from '../../services/http.service';
 
 const URL =
     'https://sheets.googleapis.com/v4/spreadsheets/1lfbDLW4aj_BJgEzX6A0AoTWb33BYIskko5ggjffOrrg/values/Points?key=AIzaSyCUFLnGh5pHkqh3TjPsJD-8hOZwGlxvRwQ';
@@ -46,11 +46,11 @@ const DAYS = [
 ];
 
 @Component({
-  selector: 'app-tab1',
-  templateUrl: 'tab1.page.html',
-  styleUrls: ['tab1.page.scss']
+  selector: 'app-nearby',
+  templateUrl: 'nearby.page.html',
+  styleUrls: ['nearby.page.scss']
 })
-export class Tab1Page {
+export class NearbyPage {
   allBDs: Beatdown[];
   nearbyMap = new Map<string, Beatdown[]>;
 
