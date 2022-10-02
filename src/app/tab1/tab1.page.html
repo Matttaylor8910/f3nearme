@@ -43,10 +43,13 @@
       <h2 class="pad-left">
         {{ day.dateDisplay }}
       </h2>
-      <ion-card class="bd-card" *ngFor="let bd of day.beatdowns">
-        <ion-button class="website-link" fill="clear" [href]="bd.website" target="_blank">
+      <ion-card class="bd-card" *ngFor="let bd of day.beatdowns" [class.has-link]="bd.website">
+        <!-- website link -->
+        <ion-button class="website-link" fill="clear" [href]="bd.website" target="_blank" *ngIf="bd.website">
           <ion-icon name="open-outline" slot="icon-only"></ion-icon>
         </ion-button>
+
+        <!-- header -->
         <ion-card-header>
           <ion-card-subtitle>
             <ion-text color="dark">{{ bd.milesFromMe | number:'1.1-1' }} mi</ion-text>
@@ -54,6 +57,8 @@
           </ion-card-subtitle>
           <ion-card-title [innerHtml]="bd.name | highlight:filterText"></ion-card-title>
         </ion-card-header>
+
+        <!-- details -->
         <ion-card-content>
           <p *ngIf="showRegion"><b>Region:</b>&nbsp;<span [innerHtml]="bd.region | highlight:filterText"></span></p>
           <p><b>Type:</b>&nbsp;<span [innerHtml]="bd.type | highlight:filterText"></span></p>
@@ -69,12 +74,14 @@
       </ion-card>
     </div>
 
+    <!-- no workouts nearby -->
     <ion-text color="medium" *ngIf="days.length === 0">
       <h3 class="pad-left">
         {{ emptyText }}
       </h3>
     </ion-text>
 
+    <!-- infinite scroll handler -->
     <ion-infinite-scroll threshold="100px" (ionInfinite)="loadOneWeek($event)" [disabled]="days.length === 0">
       <ion-infinite-scroll-content
         loadingSpinner="crescent"

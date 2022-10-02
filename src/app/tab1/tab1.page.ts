@@ -324,7 +324,7 @@ export class Tab1Page {
 
     // set the limit so long as cancel was not clicked
     const {role} = await actionSheet.onDidDismiss();
-    if (role !== 'cancel') {
+    if (!['backdrop', 'cancel'].includes(role)) {
       this.updateLimit(Number(role));
     }
   }
