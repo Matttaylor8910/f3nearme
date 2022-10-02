@@ -1,0 +1,18 @@
+.bd-card {
+  position: relative;
+
+  // make space for the icon
+  ion-card-header {
+    padding-right: 55px;
+  }
+
+  // position the icon in the top right of the card
+  .website-link {
+    position: absolute;
+    z-index: 99;
+    right: 0;
+    top: 4px;
+    --padding-start: 12px;
+    --padding-end: 12px;
+  }
+}

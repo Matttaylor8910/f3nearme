@@ -53,6 +53,7 @@ const DAYS = [
 export class Tab1Page {
   allBDs: Beatdown[];
   nearbyMap = new Map<string, Beatdown[]>;
+
   days: Day[];
   limit = this.loadLimit();
   showRegion = false;
@@ -349,7 +350,13 @@ export class Tab1Page {
    * while we wait on the API
    */
   saveToCache() {
-    localStorage.setItem('bds', JSON.stringify(this.allBDs || []));
+    try {
+      localStorage.setItem('bds', JSON.stringify(this.allBDs || []));
+    } catch (_e) {
+      // Do nothing with the error for now, it's not a big deal that the data
+      // doesn't get persisted
+      localStorage.removeItem('bds');
+    }
   }
 
   /**
