@@ -34,7 +34,11 @@
     <!-- location load failure message -->
     <ion-text color="medium" *ngIf="locationFailure && days?.length > 0">
       <h4 class="pad-left">
-        Couldn't load location, defaulting to downtown Boise
+        Couldn't load location, defaulting to downtown Boise. 
+      </h4>
+      <h4 style="color:red;">
+        To resolve this issue, modify the location prviacy settings on your device for your web browser app (Safari/Chrome/etc.):
+        <a href="https://support.apple.com/en-us/HT207092">iOS</a> / <a href="https://support.google.com/android/answer/6179507?hl=en">Android</a>
       </h4>
     </ion-text>
 
