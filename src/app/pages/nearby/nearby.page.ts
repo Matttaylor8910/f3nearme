@@ -1,5 +1,5 @@
 import {Component} from '@angular/core';
-import {ActionSheetController} from '@ionic/angular';
+import {ActionSheetController, Platform} from '@ionic/angular';
 
 import {HttpService} from '../../services/http.service';
 
@@ -61,10 +61,13 @@ export class NearbyPage {
 
   myLocation: Coords;
   locationFailure = false;
+  locationHelpLink = this.getLocationHelpLink();
+  dismissed = false;
 
   constructor(
       private readonly http: HttpService,
       private readonly actionSheetController: ActionSheetController,
+      private readonly platform: Platform,
   ) {}
 
   ngOnInit() {
@@ -330,6 +333,13 @@ export class NearbyPage {
   }
 
   /**
+   * Temporarily dismiss the location warning
+   */
+  dismissLocationWarning() {
+    this.dismissed = true;
+  }
+
+  /**
    * Save a given limit and re-load bds
    */
   updateLimit(limit: number) {
@@ -365,5 +375,19 @@ export class NearbyPage {
   loadFromCache() {
     this.allBDs = JSON.parse(localStorage.getItem('bds') || 'null');
     this.setMyLocation();
+  }
+
+  /**
+   * Returns the URL to a help article for enabling location services based on
+   * the device's platform
+   */
+  private getLocationHelpLink(): string {
+    if (this.platform.is('ios')) {
+      return 'https://support.apple.com/en-us/HT207092';
+    }
+    if (this.platform.is('android')) {
+      return 'https://support.google.com/android/answer/6179507?hl=en';
+    }
+    return 'https://docs.buddypunch.com/en/articles/919258-how-to-enable-location-services-for-chrome-safari-edge-and-android-ios-devices-gps-setting';
   }
 }
