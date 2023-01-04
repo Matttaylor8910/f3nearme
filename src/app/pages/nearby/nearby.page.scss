@@ -1,3 +1,10 @@
+.resolve-issue-container {
+  .buttons {
+    ion-button {
+      margin-top: 16px;
+    }
+  }
+}
 .bd-card {
   position: relative;
 
@@ -14,5 +21,18 @@
     top: 4px;
     --padding-start: 12px;
     --padding-end: 12px;
+  }
+}
+
+@media (min-width: 800px) {
+  .resolve-issue-container {
+    .buttons {
+      display: flex;
+      align-items: center;
+
+      ion-button {
+        max-width: 150px;
+      }
+    }
   }
 }

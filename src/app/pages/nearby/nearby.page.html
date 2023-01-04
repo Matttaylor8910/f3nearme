@@ -33,18 +33,29 @@
   <div *ngIf="days; else loading">
     <!-- location load failure message -->
     <ion-text color="medium" *ngIf="locationFailure && days?.length > 0">
-      <h4 class="pad-left">
-        Couldn't load location, defaulting to downtown Boise. 
+      <h4 class="padding">
+        Couldn't load location, defaulting to downtown Boise.
       </h4>
-      <h4 style="color:red;">
-        To resolve this issue, modify the location prviacy settings on your device for your web browser app (Safari/Chrome/etc.):
-        <a href="https://support.apple.com/en-us/HT207092">iOS</a> / <a href="https://support.google.com/android/answer/6179507?hl=en">Android</a>
-      </h4>
+      <ng-container *ngIf="!dismissed">
+        <h4 class="resolve-issue-container padding">
+          <ion-text color="danger">
+            To resolve this issue, modify the location privacy settings on your device for your web browser app (Safari/Chrome/etc.):
+          </ion-text>
+          <div class="buttons">
+            <ion-button class="space-above" expand="block" color="primary" [href]="locationHelpLink" target="_blank">
+              Learn More
+            </ion-button>
+            <ion-button class="space-above" expand="block" color="medium" fill="clear" (click)="dismissLocationWarning()">
+              Dismiss
+            </ion-button>
+          </div>
+        </h4>
+      </ng-container>
     </ion-text>
 
     <!-- list of workouts, grouped by day -->
     <div *ngFor="let day of days">
-      <h2 class="pad-left">
+      <h2 class="padding">
         {{ day.dateDisplay }}
       </h2>
       <ion-card class="bd-card" *ngFor="let bd of day.beatdowns" [class.has-link]="bd.website">
@@ -80,7 +91,7 @@
 
     <!-- no workouts nearby -->
     <ion-text color="medium" *ngIf="days.length === 0">
-      <h3 class="pad-left">
+      <h3 class="padding">
         {{ emptyText }}
       </h3>
     </ion-text>
