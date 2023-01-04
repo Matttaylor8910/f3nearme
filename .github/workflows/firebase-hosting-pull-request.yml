@@ -9,6 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Install @angular/cli
+        run: npm i -D -E @angular/cli --force
+      - name: Use coturiv/setup-ionic
+        uses: coturiv/setup-ionic@master
+        with:
+          cordova-version: 8
+      - name: Install app dependencies
+        run: npm ci --force
+      - name: Build prod app
+        run: npm run build:prod
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
