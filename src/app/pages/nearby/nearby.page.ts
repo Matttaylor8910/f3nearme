@@ -332,6 +332,9 @@ export class NearbyPage {
     }
   }
 
+  /**
+   * Temporarily dismiss the location warning
+   */
   dismissLocationWarning() {
     this.dismissed = true;
   }
@@ -375,7 +378,8 @@ export class NearbyPage {
   }
 
   /**
-   * Returns the URL to a help article for enabling location services
+   * Returns the URL to a help article for enabling location services based on
+   * the device's platform
    */
   private getLocationHelpLink(): string {
     if (this.platform.is('ios')) {
