@@ -1,0 +1,88 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-title>
+      {{ title }}
+    </ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="presentActionSheet()" *ngIf="!filterText">
+        {{ limit }} miles
+        <ion-icon name="chevron-down"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+  <ion-toolbar>
+    <ion-searchbar
+      mode="ios"
+      [(ngModel)]="filterText"
+      [debounce]="500"
+      (ionChange)="setCalendarBeatdowns()"
+      placeholder="Find a workout">
+    </ion-searchbar>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true">
+  <ion-header collapse="condense">
+    <ion-toolbar>
+      <ion-title size="large">
+        {{ title }}
+      </ion-title>
+    </ion-toolbar>
+  </ion-header>
+
+  <ion-segment [(ngModel)]="view">
+    <ion-segment-button value="month">
+      <ion-label>Month</ion-label>
+    </ion-segment-button>
+    <ion-segment-button value="week">
+      <ion-label>Week</ion-label>
+    </ion-segment-button>
+    <ion-segment-button value="day">
+      <ion-label>Day</ion-label>
+    </ion-segment-button>
+  </ion-segment>
+
+
+  <div class="alert alert-info">
+    Click on a day or time slot on the view.
+    <strong *ngIf="clickedDate"
+      >You clicked on this time: {{ clickedDate | date:'medium' }}</strong
+    >
+    <strong *ngIf="clickedColumn !== undefined"
+      >You clicked on this column: {{ clickedColumn }}</strong
+    >
+  </div>
+
+  <!-- <div [ngSwitch]="view"> -->
+    <mwl-calendar-month-view
+      [class.hidden]="view !== 'month'"
+      [viewDate]="viewDate"
+      [events]="events"
+      (columnHeaderClicked)="clickedColumn = $event.isoDayNumber"
+      (dayClicked)="clickedDate = $event.day.date"
+    >
+    </mwl-calendar-month-view>
+    <mwl-calendar-week-view
+    [class.hidden]="view !== 'week'"
+      [viewDate]="viewDate"
+      [events]="events"
+      (dayHeaderClicked)="clickedDate = $event.day.date"
+      (hourSegmentClicked)="clickedDate = $event.date"
+    >
+    </mwl-calendar-week-view>
+    <mwl-calendar-day-view
+      [class.hidden]="view !== 'day'"
+      [viewDate]="viewDate"
+      [events]="events"
+      (hourSegmentClicked)="clickedDate = $event.date"
+    >
+    </mwl-calendar-day-view>
+  <!-- </div> -->
+</ion-content>
+
+<!-- loading spinner -->
+<ng-template #loading>
+  <div class="spinner-container">
+    <ion-spinner></ion-spinner>
+  </div>
+</ng-template>

@@ -6,6 +6,8 @@ import {AngularFireAnalyticsModule} from '@angular/fire/compat/analytics';
 import {BrowserModule} from '@angular/platform-browser';
 import {RouteReuseStrategy} from '@angular/router';
 import {IonicModule, IonicRouteStrategy} from '@ionic/angular';
+import {CalendarModule, DateAdapter} from 'angular-calendar';
+import {adapterFactory} from 'angular-calendar/date-adapters/date-fns';
 import {environment} from 'src/environments/environment';
 
 import {AppRoutingModule} from './app-routing.module';
@@ -22,6 +24,10 @@ import {AppComponent} from './app.component';
     HttpClientModule,
     AngularFireModule.initializeApp(environment.firebase),
     AngularFireAnalyticsModule,
+    CalendarModule.forRoot({
+      provide: DateAdapter,
+      useFactory: adapterFactory,
+    }),
   ],
   providers: [
     ScreenTrackingService,
