@@ -506,7 +506,7 @@ export class NearbyPage {
    */
   get fromLabel(): string {
     if (this.useMyLocation) return 'My Location';
-    if (this.selectedRegion) return `${this.selectedRegion.city}, ${this.selectedRegion.region}`;
+    if (this.selectedRegion) return `${this.selectedRegion.city || this.selectedRegion.region}`;
     return 'Choose Location';
   }
 

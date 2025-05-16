@@ -1,20 +1,17 @@
 <ion-header [translucent]="true">
   <ion-toolbar>
-    <ion-title>
-      {{ title }}
-    </ion-title>
-    <ion-buttons slot="end">
-      <!-- Miles dropdown -->
-      <ion-button (click)="presentActionSheet()" *ngIf="!filterText">
+    <div class="header-controls">
+      <span class="header-label">WITHIN</span>
+      <ion-button mode="md" (click)="presentActionSheet()" fill="clear" size="small">
         {{ limit }} miles
         <ion-icon name="chevron-down"></ion-icon>
       </ion-button>
-      <!-- From dropdown -->
-      <ion-button (click)="openRegionModal()">
+      <span class="header-label">OF</span>
+      <ion-button mode="md" (click)="openRegionModal()" fill="clear" size="small">
         {{ fromLabel }}
         <ion-icon name="chevron-down"></ion-icon>
       </ion-button>
-    </ion-buttons>
+    </div>
   </ion-toolbar>
   <ion-toolbar>
     <ion-searchbar
@@ -87,7 +84,7 @@
   </ion-modal>
 
   <!-- Main content -->
-  <div *ngIf="days && myLocation; else loading">
+  <div *ngIf="days; else loading">
     <!-- location load failure message -->
     <ion-text color="medium" *ngIf="locationFailure && days?.length > 0">
       <h4 class="padding">

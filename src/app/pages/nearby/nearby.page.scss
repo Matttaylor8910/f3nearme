@@ -36,3 +36,62 @@
     }
   }
 }
+
+.header-controls {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  text-align: center;
+  gap: 0.1em;
+  overflow: hidden;
+  white-space: nowrap;
+
+  ion-button {
+    margin: 0 0;
+    min-width: 36px;
+    min-height: 32px;
+    padding: 0 8px;
+    font-size: 1rem;
+    --padding-start: 8px;
+    --padding-end: 8px;
+    height: 36px;
+    line-height: 1.1;
+    max-width: 40vw;
+    white-space: normal;
+  }
+  
+  .from-label-button {
+    max-width: 40vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+  }
+}
+
+.header-label {
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  margin-right: 0.15em;
+  margin-left: 0.15em;
+  font-size: 1rem;
+}
+
+@media (max-width: 500px) {
+  .header-controls {
+    gap: 0.05em;
+    ion-button {
+      font-size: 0.85rem;
+      padding: 0 2px;
+      --padding-start: 4px;
+      --padding-end: 4px;
+      height: 32px;
+    }
+  }
+  .header-label {
+    font-size: 0.85rem;
+  }
+}
