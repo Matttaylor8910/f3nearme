@@ -1,12 +1,8 @@
 import {Component} from '@angular/core';
 import {ActionSheetController, Platform} from '@ionic/angular';
+import {BeatdownService} from '../../services/beatdown.service';
 
-import {HttpService} from '../../services/http.service';
-
-const URL =
-    'https://sheets.googleapis.com/v4/spreadsheets/1lfbDLW4aj_BJgEzX6A0AoTWb33BYIskko5ggjffOrrg/values/Points?key=AIzaSyCUFLnGh5pHkqh3TjPsJD-8hOZwGlxvRwQ';
-
-interface Beatdown {
+export interface Beatdown {
   dayOfWeek: string;
   timeString: string;
   type: string;
@@ -42,7 +38,7 @@ const DEFAULT_LIMIT = 30;
 const MIN_FILTER_TEXT_LENGTH = 3;
 
 const DAYS = [
-  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
+  'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
 ];
 
 @Component({
@@ -65,12 +61,13 @@ export class NearbyPage {
   dismissed = false;
 
   constructor(
-      private readonly http: HttpService,
+      private readonly beatdownService: BeatdownService,
       private readonly actionSheetController: ActionSheetController,
       private readonly platform: Platform,
   ) {}
 
   ngOnInit() {
+    this.myLocation = BOISE_COORDS;
     this.loadFromCache();
     this.loadBeatdowns();
   }
@@ -96,60 +93,44 @@ export class NearbyPage {
   }
 
   /**
-   * Load the beatdowns from the API
+   * Load the beatdowns from Firestore
    */
-  async loadBeatdowns() {
-    const unparsed = await this.http.get(URL);
-
-    this.allBDs = unparsed.values.map((bd, index) => {
-      const [
-        dayOfWeek,
-        timeString,
-        type,
-        region,
-        website,
-        notes,
-        _markerIcon,
-        _markerColor,
-        _iconColor,
-        _customSize,
-        name,
-        _image,
-        _description,
-        address,
-        lat,
-        long,
-      ] = bd;
-
-      return {
-        dayOfWeek,
-        timeString,
-        type,
-        region,
-        website,
-        notes,
-        name,
-        address,
-        lat: Number(lat),
-        long: Number(long),
-      };
+  loadBeatdowns() {
+    this.beatdownService.getNearbyBeatdowns().subscribe({
+      next: (beatdowns) => {
+        this.allBDs = beatdowns;
+        this.saveToCache();
+        this.setNearbyBeatdowns();
+      },
+      error: (error) => {
+        console.error('Error loading beatdowns:', error);
+        this.loadFromCache();
+      }
     });
-
-    // remove the first one (which is just labels)
-    this.allBDs.shift();
-    this.saveToCache();
-    this.setMyLocation();
   }
 
   /**
-   * Try to get the user's location, but fallback to Boise's coordinates for now
+   * Try to get the user's location
    */
   setMyLocation() {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
+    try {
+      if (navigator.geolocation) {
+        const options = {
+          enableHighAccuracy: true,
+          timeout: 5000,
+          maximumAge: 0
+        };
+        
+        navigator.geolocation.getCurrentPosition(
           this.onGeolocationSuccess.bind(this),
-          this.onGeolocationFailure.bind(this));
-    } else {
+          this.onGeolocationFailure.bind(this),
+          options
+        );
+      } else {
+        this.onGeolocationFailure();
+      }
+    } catch (error) {
+      console.error('Error getting location:', error);
       this.onGeolocationFailure();
     }
   }
@@ -160,6 +141,7 @@ export class NearbyPage {
   onGeolocationSuccess(position: GeolocationPosition) {
     const {latitude, longitude} = position.coords;
     this.myLocation = {latitude, longitude};
+    this.locationFailure = false;
     this.setNearbyBeatdowns();
   }
 
@@ -167,19 +149,27 @@ export class NearbyPage {
    * Handle being unable to load the user's location
    */
   onGeolocationFailure(failure?: GeolocationPositionError) {
-    console.log(failure);
+    if (failure) {
+      switch (failure.code) {
+        case 1: // PERMISSION_DENIED
+          break;
+        case 2: // POSITION_UNAVAILABLE
+          break;
+        case 3: // TIMEOUT
+          break;
+      }
+    }
+
     this.locationFailure = true;
-    this.myLocation = BOISE_COORDS;
     this.setNearbyBeatdowns();
   }
 
   /**
    * Filter down to the nearby beatdowns and set the data in the app
-   * This will act as a reset as well
    */
   setNearbyBeatdowns() {
-    // no-op if we're not ready
-    if (!this.allBDs || !this.myLocation) return;
+    // no-op if we don't have beatdowns
+    if (!this.allBDs) return;
 
     // don't try to build up the days with too small of a filter text for
     // performance reasons
@@ -296,7 +286,10 @@ export class NearbyPage {
   getDateDisplay(today: Date, offset: number) {
     if (offset === 0) return 'Today';
     if (offset === 1) return 'Tomorrow';
-    if (offset < 7) return DAYS[(today.getDay() + offset) % 7];
+    if (offset < 7) {
+      const day = DAYS[(today.getDay() + offset) % 7];
+      return day.charAt(0).toUpperCase() + day.slice(1);
+    }
     return this.addDays(today, offset).toDateString();
   }
 
@@ -374,7 +367,6 @@ export class NearbyPage {
    */
   loadFromCache() {
     this.allBDs = JSON.parse(localStorage.getItem('bds') || 'null');
-    this.setMyLocation();
   }
 
   /**
