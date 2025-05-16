@@ -1,6 +1,6 @@
 <ion-header [translucent]="true">
   <ion-toolbar>
-    <div class="header-controls">
+    <div class="header-controls" *ngIf="!filterText">
       <span class="header-label">WITHIN</span>
       <ion-button mode="md" (click)="presentActionSheet()" fill="clear" size="small">
         {{ limit }} miles
@@ -10,6 +10,11 @@
       <ion-button mode="md" (click)="openRegionModal()" fill="clear" size="small">
         {{ fromLabel }}
         <ion-icon name="chevron-down"></ion-icon>
+      </ion-button>
+    </div>
+    <div class="header-controls" *ngIf="filterText">
+      <ion-button class="clear-search-button" mode="md" fill="clear" (click)="clearSearch()">
+        CLEAR SEARCH RESULTS
       </ion-button>
     </div>
   </ion-toolbar>

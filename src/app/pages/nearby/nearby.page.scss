@@ -61,6 +61,11 @@
     max-width: 40vw;
     white-space: normal;
   }
+
+  ion-button.clear-search-button {
+    max-width: initial;
+    font-size: 1rem;
+  }
   
   .from-label-button {
     max-width: 40vw;

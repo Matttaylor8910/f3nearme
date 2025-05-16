@@ -525,4 +525,9 @@ export class NearbyPage {
   closeRegionModal() {
     this.showRegionModal = false;
   }
+
+  clearSearch() {
+    this.filterText = '';
+    this.setNearbyBeatdowns();
+  }
 }
