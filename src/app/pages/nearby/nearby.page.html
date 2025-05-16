@@ -4,8 +4,14 @@
       {{ title }}
     </ion-title>
     <ion-buttons slot="end">
+      <!-- Miles dropdown -->
       <ion-button (click)="presentActionSheet()" *ngIf="!filterText">
         {{ limit }} miles
+        <ion-icon name="chevron-down"></ion-icon>
+      </ion-button>
+      <!-- From dropdown -->
+      <ion-button (click)="openRegionModal()">
+        {{ fromLabel }}
         <ion-icon name="chevron-down"></ion-icon>
       </ion-button>
     </ion-buttons>
@@ -30,6 +36,57 @@
     </ion-toolbar>
   </ion-header>
 
+  <!-- Location warning -->
+  <ion-header *ngIf="locationFailure && !dismissed">
+    <ion-toolbar color="warning">
+      <ion-title>Location Services Disabled</ion-title>
+      <ion-buttons slot="end">
+        <ion-button (click)="dismissLocationWarning()">
+          <ion-icon name="close"></ion-icon>
+        </ion-button>
+      </ion-buttons>
+    </ion-toolbar>
+  </ion-header>
+
+  <!-- Region Modal -->
+  <ion-modal [(isOpen)]="showRegionModal">
+    <ng-template>
+      <ion-header>
+        <ion-toolbar>
+          <ion-title>Select Location</ion-title>
+          <ion-buttons slot="end">
+            <ion-button (click)="closeRegionModal()">
+              <ion-icon name="close"></ion-icon>
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content>
+        <ion-list>
+          <ion-item button (click)="selectMyLocation()">
+            <ion-label><h2>My Location</h2></ion-label>
+            <ion-icon name="locate-outline" slot="end"></ion-icon>
+          </ion-item>
+        </ion-list>
+        <ion-searchbar
+          [(ngModel)]="regionSearchText"
+          (ionInput)="filterRegions($event)"
+          placeholder="Search for your city or region"
+          animated
+        ></ion-searchbar>
+        <ion-list>
+          <ion-item *ngFor="let region of filteredRegions" (click)="selectRegion(region)">
+            <ion-label>
+              <h2>{{region.city}}</h2>
+              <p>{{region.region}}</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+      </ion-content>
+    </ng-template>
+  </ion-modal>
+
+  <!-- Main content -->
   <div *ngIf="days; else loading">
     <!-- location load failure message -->
     <ion-text color="medium" *ngIf="locationFailure && days?.length > 0">

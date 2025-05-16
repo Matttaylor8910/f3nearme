@@ -27,6 +27,13 @@ interface Coords {
   longitude: number;
 }
 
+interface RegionCity {
+  city: string;
+  region: string;
+  lat: number;
+  long: number;
+}
+
 const BOISE_COORDS: Coords = {
   latitude: 43.6150,
   longitude: -116.2023,
@@ -59,6 +66,16 @@ export class NearbyPage {
   locationFailure = false;
   locationHelpLink = this.getLocationHelpLink();
   dismissed = false;
+
+  // Region selection
+  showRegionSelector = false;
+  regions: RegionCity[] = [];
+  filteredRegions: RegionCity[] = [];
+  regionSearchText = '';
+
+  selectedRegion: RegionCity | null = null;
+  useMyLocation: boolean = true;
+  showRegionModal = false;
 
   constructor(
       private readonly beatdownService: BeatdownService,
@@ -100,6 +117,7 @@ export class NearbyPage {
       next: (beatdowns) => {
         this.allBDs = beatdowns;
         this.saveToCache();
+        this.extractRegions();
         this.setNearbyBeatdowns();
       },
       error: (error) => {
@@ -113,6 +131,7 @@ export class NearbyPage {
    * Try to get the user's location
    */
   setMyLocation() {
+    this.useMyLocation = true;
     try {
       if (navigator.geolocation) {
         const options = {
@@ -162,6 +181,7 @@ export class NearbyPage {
 
     this.locationFailure = true;
     this.myLocation = BOISE_COORDS;
+    this.showRegionSelector = true;
     this.setNearbyBeatdowns();
   }
 
@@ -382,5 +402,115 @@ export class NearbyPage {
       return 'https://support.google.com/android/answer/6179507?hl=en';
     }
     return 'https://docs.buddypunch.com/en/articles/919258-how-to-enable-location-services-for-chrome-safari-edge-and-android-ios-devices-gps-setting';
+  }
+
+  /**
+   * Extract unique regions and cities from beatdowns
+   */
+  private extractRegions() {
+    const regionMap = new Map<string, RegionCity>();
+    
+    this.allBDs.forEach(bd => {
+      const key = `${bd.region || 'Unknown Region'}-${bd.address || 'Unknown Location'}`;
+      if (!regionMap.has(key)) {
+        regionMap.set(key, {
+          city: this.extractCity(bd.address),
+          region: bd.region || 'Unknown Region',
+          lat: bd.lat,
+          long: bd.long
+        });
+      }
+    });
+
+    this.regions = Array.from(regionMap.values())
+      .sort((a, b) => {
+        // Sort by region first, then city
+        const regionCompare = (a.region || '').localeCompare(b.region || '');
+        return regionCompare !== 0 ? regionCompare : (a.city || '').localeCompare(b.city || '');
+      });
+    
+    this.filteredRegions = [...this.regions];
+  }
+
+  /**
+   * Extract city name from address
+   */
+  private extractCity(address: string | null | undefined): string {
+    if (!address) return 'Unknown Location';
+    
+    // Simple extraction - take the last part before the state
+    const parts = address.split(',');
+    if (parts.length >= 2) {
+      return parts[parts.length - 2].trim();
+    }
+    return address;
+  }
+
+  /**
+   * Filter regions based on search text
+   */
+  filterRegions(event: any) {
+    const searchText = event.target.value.toLowerCase();
+    this.regionSearchText = searchText;
+    
+    if (!searchText) {
+      this.filteredRegions = [...this.regions];
+      return;
+    }
+
+    this.filteredRegions = this.regions.filter(rc => 
+      rc.city.toLowerCase().includes(searchText) || 
+      rc.region.toLowerCase().includes(searchText)
+    );
+  }
+
+  /**
+   * Handle region selection
+   */
+  selectRegion(region: RegionCity) {
+    this.selectedRegion = region;
+    this.useMyLocation = false;
+    this.myLocation = {
+      latitude: region.lat,
+      longitude: region.long
+    };
+    this.locationFailure = false;
+    this.showRegionModal = false;
+    this.setNearbyBeatdowns();
+  }
+
+  /**
+   * When user selects "My Location" from modal
+   */
+  selectMyLocation() {
+    this.selectedRegion = null;
+    this.useMyLocation = true;
+    this.showRegionModal = false;
+    this.setMyLocation();
+  }
+
+  /**
+   * For the "From" dropdown label
+   */
+  get fromLabel(): string {
+    if (this.useMyLocation) return 'My Location';
+    if (this.selectedRegion) return `${this.selectedRegion.city}, ${this.selectedRegion.region}`;
+    return 'Choose Location';
+  }
+
+  /**
+   * Show modal
+   */
+  openRegionModal() {
+    this.showRegionModal = true;
+    this.regionSearchText = '';
+    this.filteredRegions = [...this.regions];
+  }
+
+  /**
+   * Hide modal
+   */
+  closeRegionModal() {
+    this.showRegionModal = false;
   }
 }
