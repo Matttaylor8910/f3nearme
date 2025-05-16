@@ -178,11 +178,10 @@ export class NearbyPage {
           break;
       }
     }
-
     this.locationFailure = true;
-    this.myLocation = BOISE_COORDS;
-    this.showRegionSelector = true;
-    this.setNearbyBeatdowns();
+    this.myLocation = undefined;
+    this.showRegionModal = true;
+    // Do not call setNearbyBeatdowns here, as we have no location
   }
 
   /**
@@ -405,17 +404,44 @@ export class NearbyPage {
   }
 
   /**
+   * Extract city and state/country from address, e.g. 'Boise, ID'
+   */
+  private extractCity(address: string | null | undefined): string {
+    if (!address) return 'Unknown Location';
+    const parts = address.split(',').map(p => p.trim());
+    if (parts.length >= 3) {
+      // e.g. '123 Main St, Boise, ID, USA' or 'Boise, ID, USA'
+      return `${parts[parts.length - 2]}, ${parts[parts.length - 1]}`;
+    } else if (parts.length === 2) {
+      // e.g. 'Boise, ID'
+      return `${parts[0]}, ${parts[1]}`;
+    } else if (parts.length === 1) {
+      return parts[0];
+    }
+    return address;
+  }
+
+  /**
+   * Normalize a string for deduplication (lowercase, trim, remove extra spaces)
+   */
+  private normalizeKey(str: string | null | undefined): string {
+    return (str || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+
+  /**
    * Extract unique regions and cities from beatdowns
    */
   private extractRegions() {
     const regionMap = new Map<string, RegionCity>();
     
     this.allBDs.forEach(bd => {
-      const key = `${bd.region || 'Unknown Region'}-${bd.address || 'Unknown Location'}`;
+      const city = this.extractCity(bd.address);
+      const region = bd.region || 'Unknown Region';
+      const key = `${this.normalizeKey(city)}-${this.normalizeKey(region)}`;
       if (!regionMap.has(key)) {
         regionMap.set(key, {
-          city: this.extractCity(bd.address),
-          region: bd.region || 'Unknown Region',
+          city,
+          region,
           lat: bd.lat,
           long: bd.long
         });
@@ -430,20 +456,6 @@ export class NearbyPage {
       });
     
     this.filteredRegions = [...this.regions];
-  }
-
-  /**
-   * Extract city name from address
-   */
-  private extractCity(address: string | null | undefined): string {
-    if (!address) return 'Unknown Location';
-    
-    // Simple extraction - take the last part before the state
-    const parts = address.split(',');
-    if (parts.length >= 2) {
-      return parts[parts.length - 2].trim();
-    }
-    return address;
   }
 
   /**

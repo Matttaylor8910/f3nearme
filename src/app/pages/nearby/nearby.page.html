@@ -77,8 +77,8 @@
         <ion-list>
           <ion-item *ngFor="let region of filteredRegions" (click)="selectRegion(region)">
             <ion-label>
-              <h2>{{region.city}}</h2>
-              <p>{{region.region}}</p>
+              <h2>{{region.region}}</h2>
+              <p>{{region.city}}</p>
             </ion-label>
           </ion-item>
         </ion-list>
@@ -87,11 +87,11 @@
   </ion-modal>
 
   <!-- Main content -->
-  <div *ngIf="days; else loading">
+  <div *ngIf="days && myLocation; else loading">
     <!-- location load failure message -->
     <ion-text color="medium" *ngIf="locationFailure && days?.length > 0">
       <h4 class="padding">
-        Couldn't load location, defaulting to downtown Boise.
+        Couldn't load location.
       </h4>
       <ng-container *ngIf="!dismissed">
         <h4 class="resolve-issue-container padding">
@@ -160,6 +160,19 @@
         loadingText="Loading more...">
       </ion-infinite-scroll-content>
     </ion-infinite-scroll>
+  </div>
+
+  <!-- Empty state if no location is selected and modal is closed -->
+  <div *ngIf="!myLocation && !showRegionModal">
+    <ion-text color="medium">
+      <h3 class="padding">
+        No location selected.<br>
+        Please choose a region or city to see nearby workouts.
+      </h3>
+      <ion-button expand="block" color="primary" (click)="openRegionModal()">
+        Choose Location
+      </ion-button>
+    </ion-text>
   </div>
 
 </ion-content>
