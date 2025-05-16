@@ -116,6 +116,21 @@ const RETRY_DELAY = 1000; // 1 second
 // Helper function to delay execution
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Helper function to format error messages
+function formatErrorMessage(error: any): string {
+  if (error.response) {
+    // The request was made and the server responded with a status code
+    // that falls out of the range of 2xx
+    return `HTTP Error ${error.response.status}: ${error.response.statusText}`;
+  } else if (error.request) {
+    // The request was made but no response was received
+    return 'No response received from server';
+  } else {
+    // Something happened in setting up the request that triggered an Error
+    return error.message || 'Unknown error occurred';
+  }
+}
+
 // Helper function to make API calls with retries
 async function fetchWithRetry<T>(url: string, params?: any): Promise<T> {
   let lastError: Error | null = null;
@@ -126,18 +141,22 @@ async function fetchWithRetry<T>(url: string, params?: any): Promise<T> {
       return response.data;
     } catch (error) {
       lastError = error as Error;
-      console.error(`Attempt ${attempt} failed:`, error);
+      const errorMessage = formatErrorMessage(error);
+      console.error(`Attempt ${attempt}/${MAX_RETRIES} failed: ${errorMessage}`);
       if (attempt < MAX_RETRIES) {
         await delay(RETRY_DELAY * attempt);
       }
     }
   }
   
-  throw lastError;
+  throw new Error(`All ${MAX_RETRIES} attempts failed. Last error: ${formatErrorMessage(lastError)}`);
 }
 
 // Helper function to format military time to AM/PM
-function formatTime(militaryTime: string): string {
+function formatTime(militaryTime: string | null | undefined): string {
+  if (!militaryTime) {
+    return '';
+  }
   // Ensure we have a 4-digit string
   const paddedTime = militaryTime.padStart(4, '0');
   const hours = parseInt(paddedTime.substring(0, 2));
