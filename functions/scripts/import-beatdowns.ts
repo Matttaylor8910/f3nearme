@@ -84,6 +84,7 @@ interface Beatdown {
   address: string;
   lat: number;
   long: number;
+  locationId: number;
 }
 
 // API Response Types
@@ -135,11 +136,22 @@ async function fetchWithRetry<T>(url: string, params?: any): Promise<T> {
   throw lastError;
 }
 
+// Helper function to format military time to AM/PM
+function formatTime(militaryTime: string): string {
+  // Ensure we have a 4-digit string
+  const paddedTime = militaryTime.padStart(4, '0');
+  const hours = parseInt(paddedTime.substring(0, 2));
+  const minutes = paddedTime.substring(2);
+  const period = hours >= 12 ? 'pm' : 'am';
+  const displayHours = hours % 12 || 12;
+  return `${displayHours}:${minutes} ${period}`;
+}
+
 // Transform location data into beatdown objects
 function transformLocationToBeatdowns(location: Location): Beatdown[] {
   return location.events.map(event => ({
     dayOfWeek: event.dayOfWeek,
-    timeString: event.startTime,
+    timeString: `${formatTime(event.startTime)} - ${formatTime(event.endTime)}`,
     type: event.eventTypes[0]?.name || 'Unknown',
     region: location.regionName,
     website: location.parentWebsite,
@@ -147,13 +159,31 @@ function transformLocationToBeatdowns(location: Location): Beatdown[] {
     name: location.name,
     address: location.fullAddress,
     lat: location.lat,
-    long: location.lon
+    long: location.lon,
+    locationId: location.id
   }));
+}
+
+// Helper function to generate a consistent document ID
+function generateBeatdownId(beatdown: Beatdown): string {
+  // Create a unique ID based on name, day, and time
+  const baseString = `${beatdown.name}-${beatdown.dayOfWeek}-${beatdown.timeString}`;
+  // Convert to lowercase and replace spaces/special chars with hyphens
+  return baseString.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 }
 
 async function main() {
   try {
     console.log('Starting beatdown import...');
+
+    // First, fetch all existing beatdowns to track what needs to be migrated
+    console.log('Fetching existing beatdowns...');
+    const existingBeatdownsSnapshot = await db.collection('beatdowns').get();
+    const existingBeatdowns = new Map();
+    existingBeatdownsSnapshot.forEach((doc: admin.firestore.QueryDocumentSnapshot) => {
+      existingBeatdowns.set(doc.id, doc.data());
+    });
+    console.log(`Found ${existingBeatdowns.size} existing beatdowns`);
 
     // Fetch all locations
     console.log('Fetching map events data...');
@@ -165,12 +195,16 @@ async function main() {
     // Process locations in batches
     const batches = chunk(locations, 10); // Process 10 locations at a time
     let totalBeatdowns = 0;
+    let updatedBeatdowns = 0;
+    let newBeatdowns = 0;
+    let deletedBeatdowns = 0;
+    const processedIds = new Set<string>();
 
     for (const [batchIndex, batch] of batches.entries()) {
       console.log(`Processing batch ${batchIndex + 1}/${batches.length}`);
 
       // Process each location in the batch
-      const locationPromises = batch.map(async ([locationId]) => {
+      const locationPromises = batch.map(async ([locationId, , , , , , ]: [number, string, string | null, number, number, string, Array<[number, string, string, string, Array<{id: number, name: string}>]>]) => {
         try {
           const url = `${LOCATION_DATA_URL}?input={"json":{"locationId":${locationId}}}`;
           const locationData = await fetchWithRetry<LocationDataResponse>(url);
@@ -184,18 +218,30 @@ async function main() {
       });
 
       const batchResults = await Promise.all(locationPromises);
-      const beatdowns = batchResults.reduce((acc, curr) => acc.concat(curr), []);
+      const beatdowns = batchResults.reduce((acc: Beatdown[], curr: Beatdown[]) => acc.concat(curr), []);
 
       // Write to Firestore in batches
       const beatdownBatches = chunk(beatdowns, BATCH_SIZE);
       
       for (const beatdownBatch of beatdownBatches) {
         const batch = db.batch();
+        const deleteBatch = db.batch();
         
-        beatdownBatch.forEach(beatdown => {
-          const docRef = db.collection('beatdowns').doc();
+        for (const beatdown of beatdownBatch) {
+          const docId = generateBeatdownId(beatdown);
+          const docRef = db.collection('beatdowns').doc(docId);
+          processedIds.add(docId);
+          
+          // Check if document exists
+          const doc = await docRef.get();
+          if (doc.exists) {
+            updatedBeatdowns++;
+          } else {
+            newBeatdowns++;
+          }
+          
           batch.set(docRef, beatdown);
-        });
+        }
 
         await batch.commit();
         totalBeatdowns += beatdownBatch.length;
@@ -205,7 +251,26 @@ async function main() {
       await delay(1000);
     }
 
-    console.log(`Import completed successfully. Imported ${totalBeatdowns} beatdowns.`);
+    // After all new records are created, delete the old ones
+    console.log('Cleaning up old records...');
+    const deleteBatches = chunk([...existingBeatdowns.keys()], BATCH_SIZE);
+    
+    for (const oldIds of deleteBatches) {
+      const batch = db.batch();
+      for (const oldId of oldIds) {
+        const docRef = db.collection('beatdowns').doc(oldId);
+        batch.delete(docRef);
+        deletedBeatdowns++;
+      }
+      await batch.commit();
+      await delay(1000); // Small delay between delete batches
+    }
+
+    console.log(`Migration completed successfully.`);
+    console.log(`Total beatdowns processed: ${totalBeatdowns}`);
+    console.log(`New beatdowns created: ${newBeatdowns}`);
+    console.log(`Existing beatdowns updated: ${updatedBeatdowns}`);
+    console.log(`Old records deleted: ${deletedBeatdowns}`);
 
   } catch (error) {
     console.error('Import failed:', error);
