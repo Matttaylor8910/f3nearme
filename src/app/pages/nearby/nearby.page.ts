@@ -67,8 +67,8 @@ export class NearbyPage {
   ) {}
 
   ngOnInit() {
-    this.myLocation = BOISE_COORDS;
     this.loadFromCache();
+    this.setMyLocation();
     this.loadBeatdowns();
   }
 
@@ -161,6 +161,7 @@ export class NearbyPage {
     }
 
     this.locationFailure = true;
+    this.myLocation = BOISE_COORDS;
     this.setNearbyBeatdowns();
   }
 
@@ -169,7 +170,7 @@ export class NearbyPage {
    */
   setNearbyBeatdowns() {
     // no-op if we don't have beatdowns
-    if (!this.allBDs) return;
+    if (!this.myLocation || !this.allBDs) return;
 
     // don't try to build up the days with too small of a filter text for
     // performance reasons
