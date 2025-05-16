@@ -46,7 +46,7 @@
   </ion-header>
 
   <!-- Region Modal -->
-  <ion-modal [(isOpen)]="showRegionModal">
+  <ion-modal [isOpen]="showRegionModal" (ionModalDidDismiss)="closeRegionModal()">
     <ng-template>
       <ion-header>
         <ion-toolbar>
