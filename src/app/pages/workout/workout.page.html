@@ -3,7 +3,7 @@
     <ion-buttons slot="start">
       <ion-back-button defaultHref="/nearby"></ion-back-button>
     </ion-buttons>
-    <ion-title>Workout Details</ion-title>
+    <ion-title *ngIf="workout">{{ workout?.name || 'Workout Details' }}</ion-title>
     <ion-buttons slot="end">
       <ion-button (click)="shareWorkout()">
         <ion-icon [name]="canShare ? 'share-social-outline' : 'copy-outline'" slot="icon-only"></ion-icon>
@@ -104,7 +104,7 @@
     <!-- Related Workouts -->
     <ion-card *ngIf="relatedWorkouts.length > 0">
       <ion-card-header>
-        <ion-card-title>Other Workouts at this Location</ion-card-title>
+        <ion-card-title>More at this Location</ion-card-title>
       </ion-card-header>
 
       <ion-card-content>
