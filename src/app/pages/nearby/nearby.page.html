@@ -109,41 +109,43 @@
       <h2 class="padding">
         {{ day.dateDisplay }}
       </h2>
-      <ion-card class="bd-card" *ngFor="let bd of day.beatdowns" [class.has-link]="bd.website" [routerLink]="['/workout', bd.id]">
-        <!-- website link -->
-        <ion-button class="website-link" fill="clear" [href]="bd.website" target="_blank" *ngIf="bd.website" (click)="$event.stopPropagation()">
-          <ion-icon name="open-outline" slot="icon-only"></ion-icon>
-        </ion-button>
+      <div class="bd-cards-container">
+        <ion-card class="bd-card" *ngFor="let bd of day.beatdowns" [class.has-link]="bd.website" [routerLink]="['/workout', bd.id]">
+          <!-- website link -->
+          <ion-button class="website-link" fill="clear" [href]="bd.website" target="_blank" *ngIf="bd.website" (click)="$event.stopPropagation()">
+            <ion-icon name="open-outline" slot="icon-only"></ion-icon>
+          </ion-button>
 
-        <!-- header -->
-        <ion-card-header>
-          <ion-card-subtitle>
-            <ng-container *ngIf="useMyLocation">
-              <ion-text color="dark">{{ bd.milesFromMe | number:'1.1-1' }} mi</ion-text>
-              • {{ bd.timeString }}
-            </ng-container>
-            <ng-container *ngIf="!useMyLocation">
-              {{ bd.timeString }}
-            </ng-container>
-          </ion-card-subtitle>
-          <ion-card-title [innerHtml]="bd.name | highlight:filterText"></ion-card-title>
-        </ion-card-header>
+          <!-- header -->
+          <ion-card-header>
+            <ion-card-subtitle>
+              <ng-container *ngIf="useMyLocation">
+                <ion-text color="dark">{{ bd.milesFromMe | number:'1.1-1' }} mi</ion-text>
+                • {{ bd.timeString }}
+              </ng-container>
+              <ng-container *ngIf="!useMyLocation">
+                {{ bd.timeString }}
+              </ng-container>
+            </ion-card-subtitle>
+            <ion-card-title [innerHtml]="bd.name | highlight:filterText"></ion-card-title>
+          </ion-card-header>
 
-        <!-- details -->
-        <ion-card-content>
-          <p *ngIf="showRegion"><b>Region:</b>&nbsp;<span [innerHtml]="bd.region | highlight:filterText"></span></p>
-          <p><b>Type:</b>&nbsp;<span [innerHtml]="bd.type | highlight:filterText"></span></p>
-          <p>
-            <a
-              target="_blank"
-              href="https://www.google.com/maps/dir/?api=1&destination={{bd.address}}"
-              [innerHtml]="bd.address | highlight:filterText"
-              (click)="$event.stopPropagation()">
-            </a>
-          </p>
-          <p [innerHtml]="bd.notes | highlight:filterText"></p>
-        </ion-card-content>
-      </ion-card>
+          <!-- details -->
+          <ion-card-content>
+            <p *ngIf="showRegion"><b>Region:</b>&nbsp;<span [innerHtml]="bd.region | highlight:filterText"></span></p>
+            <p><b>Type:</b>&nbsp;<span [innerHtml]="bd.type | highlight:filterText"></span></p>
+            <p>
+              <a
+                target="_blank"
+                href="https://www.google.com/maps/dir/?api=1&destination={{bd.address}}"
+                [innerHtml]="bd.address | highlight:filterText"
+                (click)="$event.stopPropagation()">
+              </a>
+            </p>
+            <p [innerHtml]="bd.notes | highlight:filterText"></p>
+          </ion-card-content>
+        </ion-card>
+      </div>
     </div>
 
     <!-- no workouts nearby -->

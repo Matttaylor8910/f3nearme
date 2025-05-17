@@ -100,3 +100,19 @@
     font-size: 0.85rem;
   }
 }
+
+@media (min-width: 900px) {
+  .bd-cards-container {
+    display: flex;
+    flex-direction: row;
+    padding: 0 8px;
+    overflow-x: auto;
+  }
+  .bd-card {
+    width: 420px;
+    max-width: 420px;
+    min-width: 420px;
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+}
