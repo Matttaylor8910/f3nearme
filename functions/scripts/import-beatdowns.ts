@@ -10,6 +10,8 @@ admin.initializeApp({
 });
 const db = admin.firestore();
 
+const OPTIONAL_CLEANUP = false;
+
 // Types
 interface EventType {
   id: number;
@@ -268,6 +270,29 @@ async function main() {
     console.log(`Total beatdowns processed: ${totalBeatdowns}`);
     console.log(`New beatdowns created: ${newBeatdowns}`);
     console.log(`Existing beatdowns updated: ${updatedBeatdowns}`);
+
+    // Delete any documents that weren't part of this import
+    if (OPTIONAL_CLEANUP) {
+      console.log('Cleaning up old documents...');
+      const docsToDelete = Array.from(existingBeatdowns.keys()).filter(id => !processedIds.has(id));
+      
+      if (docsToDelete.length > 0) {
+        console.log(`Found ${docsToDelete.length} documents to delete`);
+        // Delete in batches to stay within Firestore limits
+        const deleteBatches = chunk(docsToDelete, BATCH_SIZE);
+        
+        for (const deleteBatch of deleteBatches) {
+          const batch = db.batch();
+          deleteBatch.forEach(docId => {
+            batch.delete(db.collection('beatdowns').doc(docId));
+          });
+          await batch.commit();
+        }
+        console.log(`Successfully deleted ${docsToDelete.length} old documents`);
+      } else {
+        console.log('No old documents to delete');
+      }
+    }
 
   } catch (error) {
     console.error('Import failed:', error);
