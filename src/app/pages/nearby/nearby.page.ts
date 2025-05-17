@@ -34,11 +34,6 @@ interface RegionCity {
   long: number;
 }
 
-const BOISE_COORDS: Coords = {
-  latitude: 43.6150,
-  longitude: -116.2023,
-};
-
 const MILES_OPTIONS = [10, 20, 30, 50, 100];
 const DEFAULT_LIMIT = 30;
 
@@ -87,11 +82,6 @@ export class NearbyPage {
     this.loadFromCache();
     this.setMyLocation();
     this.loadBeatdowns();
-  }
-
-  get title(): string {
-    if (this.filterText) return 'Filtered Results';
-    return this.locationFailure ? 'Near Boise, ID' : 'Nearby';
   }
 
   get filterTooShort(): boolean {
@@ -211,14 +201,28 @@ export class NearbyPage {
           this.myLocation.longitude,
       );
 
-      // side effect, but idc, we need the milesFromMe
-      bd.milesFromMe = dist;
+      // Only set milesFromMe if we're using my location
+      if (this.useMyLocation) {
+        bd.milesFromMe = dist;
+      }
 
       return this.filterText ? this.appliesToFilter(bd) : dist < this.limit;
     });
 
-    // sort the bds by distance from your location
-    nearby.sort((a, b) => a.milesFromMe - b.milesFromMe);
+    // sort the bds by distance from your location if using my location,
+    // otherwise sort by time and then alphabetically
+    if (this.useMyLocation) {
+      nearby.sort((a, b) => a.milesFromMe - b.milesFromMe);
+    } else {
+      nearby.sort((a, b) => {
+        // First compare by time
+        const timeCompare = a.timeString.localeCompare(b.timeString);
+        if (timeCompare !== 0) return timeCompare;
+        // If times are equal, sort alphabetically by name
+        return a.name.localeCompare(b.name);
+      });
+    }
+
     nearby.forEach(bd => {
       const bds = this.nearbyMap.get(bd.dayOfWeek) ?? [];
       bds.push(bd);
@@ -498,6 +502,12 @@ export class NearbyPage {
     this.selectedRegion = null;
     this.useMyLocation = true;
     this.showRegionModal = false;
+    
+    // If we already know location access is denied, don't try again
+    if (this.locationFailure) {
+      return;
+    }
+    
     this.setMyLocation();
   }
 

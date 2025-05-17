@@ -30,14 +30,6 @@
 </ion-header>
 
 <ion-content [fullscreen]="true">
-  <ion-header collapse="condense">
-    <ion-toolbar>
-      <ion-title size="large">
-        {{ title }}
-      </ion-title>
-    </ion-toolbar>
-  </ion-header>
-
   <!-- Location warning -->
   <ion-header *ngIf="locationFailure && !dismissed">
     <ion-toolbar color="warning">
@@ -126,8 +118,13 @@
         <!-- header -->
         <ion-card-header>
           <ion-card-subtitle>
-            <ion-text color="dark">{{ bd.milesFromMe | number:'1.1-1' }} mi</ion-text>
-             • {{ bd.timeString }}
+            <ng-container *ngIf="useMyLocation">
+              <ion-text color="dark">{{ bd.milesFromMe | number:'1.1-1' }} mi</ion-text>
+              • {{ bd.timeString }}
+            </ng-container>
+            <ng-container *ngIf="!useMyLocation">
+              {{ bd.timeString }}
+            </ng-container>
           </ion-card-subtitle>
           <ion-card-title [innerHtml]="bd.name | highlight:filterText"></ion-card-title>
         </ion-card-header>
