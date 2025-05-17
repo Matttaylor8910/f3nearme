@@ -101,7 +101,7 @@ export class WorkoutPage implements OnInit {
       next: (workouts) => {
         // Filter out the current workout and sort by day
         this.relatedWorkouts = workouts
-          .filter(w => w.name !== this.workout.name)
+          .filter(w => w.id !== this.workout.id)
           .sort((a, b) => {
             const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
             return days.indexOf(a.dayOfWeek) - days.indexOf(b.dayOfWeek);
