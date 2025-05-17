@@ -12,6 +12,10 @@ const routes: Routes = [
     loadChildren: () =>
         import('./pages/nearby/nearby.module').then(m => m.NearbyPageModule),
   },
+  {
+    path: 'workout',
+    loadChildren: () => import('./pages/workout/workout.module').then(m => m.WorkoutPageModule)
+  },
 ];
 @NgModule({
   imports:

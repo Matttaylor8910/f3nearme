@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { AngularFirestore } from '@angular/fire/compat/firestore';
 import { Observable } from 'rxjs';
 import { Beatdown } from '../pages/nearby/nearby.page';
-import { map } from 'rxjs/operators';
+import { map, filter } from 'rxjs/operators';
 
 @Injectable({
   providedIn: 'root'
@@ -19,13 +19,45 @@ export class BeatdownService {
    * @param radiusMiles Optional radius in miles to search within
    */
   getNearbyBeatdowns(lat?: number, lng?: number, radiusMiles: number = 100): Observable<Beatdown[]> {
-    return this.afs.collection<Beatdown>('beatdowns').valueChanges().pipe(
+    return this.afs.collection<Beatdown>('beatdowns').snapshotChanges().pipe(
+      map(actions => actions.map(a => {
+        const data = a.payload.doc.data() as Beatdown;
+        const id = a.payload.doc.id;
+        return { ...data, id };
+      })),
       map(beatdowns => {
         if (lat === undefined || lng === undefined) {
           return beatdowns;
         }
         return beatdowns.filter(bd => this.isWithinRadius(bd.lat, bd.long, lat, lng, radiusMiles));
       })
+    );
+  }
+
+  /**
+   * Get a single beatdown by ID
+   */
+  getBeatdown(id: string): Observable<Beatdown> {
+    return this.afs.doc<Beatdown>(`beatdowns/${id}`).snapshotChanges().pipe(
+      map(action => {
+        const data = action.payload.data() as Beatdown;
+        return { ...data, id: action.payload.id };
+      })
+    );
+  }
+
+  /**
+   * Get all beatdowns at a specific address
+   */
+  getBeatdownsByAddress(address: string): Observable<Beatdown[]> {
+    return this.afs.collection<Beatdown>('beatdowns', ref => 
+      ref.where('address', '==', address)
+    ).snapshotChanges().pipe(
+      map(actions => actions.map(a => {
+        const data = a.payload.doc.data() as Beatdown;
+        const id = a.payload.doc.id;
+        return { ...data, id };
+      }))
     );
   }
 

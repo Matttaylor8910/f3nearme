@@ -109,9 +109,9 @@
       <h2 class="padding">
         {{ day.dateDisplay }}
       </h2>
-      <ion-card class="bd-card" *ngFor="let bd of day.beatdowns" [class.has-link]="bd.website">
+      <ion-card class="bd-card" *ngFor="let bd of day.beatdowns" [class.has-link]="bd.website" [routerLink]="['/workout', bd.id]">
         <!-- website link -->
-        <ion-button class="website-link" fill="clear" [href]="bd.website" target="_blank" *ngIf="bd.website">
+        <ion-button class="website-link" fill="clear" [href]="bd.website" target="_blank" *ngIf="bd.website" (click)="$event.stopPropagation()">
           <ion-icon name="open-outline" slot="icon-only"></ion-icon>
         </ion-button>
 
@@ -137,7 +137,8 @@
             <a
               target="_blank"
               href="https://www.google.com/maps/dir/?api=1&destination={{bd.address}}"
-              [innerHtml]="bd.address | highlight:filterText">
+              [innerHtml]="bd.address | highlight:filterText"
+              (click)="$event.stopPropagation()">
             </a>
           </p>
           <p [innerHtml]="bd.notes | highlight:filterText"></p>

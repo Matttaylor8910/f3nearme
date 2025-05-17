@@ -3,6 +3,7 @@ import {ActionSheetController, Platform} from '@ionic/angular';
 import {BeatdownService} from '../../services/beatdown.service';
 
 export interface Beatdown {
+  id: string;
   dayOfWeek: string;
   timeString: string;
   type: string;
