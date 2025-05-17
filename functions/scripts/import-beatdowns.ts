@@ -85,6 +85,7 @@ interface Beatdown {
   lat: number;
   long: number;
   locationId: number;
+  eventId: number;
 }
 
 // API Response Types
@@ -168,14 +169,15 @@ function transformLocationToBeatdowns(location: Location): Beatdown[] {
     address: location.fullAddress,
     lat: location.lat,
     long: location.lon,
-    locationId: location.id
+    locationId: location.id,
+    eventId: event.id
   }));
 }
 
 // Helper function to generate a consistent document ID
 function generateBeatdownId(beatdown: Beatdown): string {
-  // Create a unique ID based on name, day, and time
-  const baseString = `${beatdown.name}-${beatdown.dayOfWeek}-${beatdown.timeString}`;
+  // Create ID using region name, beatdown name, and day
+  const baseString = `${beatdown.region}_${beatdown.name}_${beatdown.dayOfWeek}`;
   // Convert to lowercase and replace spaces/special chars with hyphens
   return baseString.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 }
