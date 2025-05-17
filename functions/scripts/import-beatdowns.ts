@@ -1,5 +1,5 @@
 import * as admin from 'firebase-admin';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { chunk } from 'lodash';
 import * as path from 'path';
 
@@ -121,35 +121,24 @@ function formatErrorMessage(error: any): string {
   if (error.response) {
     // The request was made and the server responded with a status code
     // that falls out of the range of 2xx
-    return `HTTP Error ${error.response.status}: ${error.response.statusText}`;
+    return `HTTP ${error.response.status}`;
   } else if (error.request) {
     // The request was made but no response was received
-    return 'No response received from server';
+    return 'No response';
   } else {
     // Something happened in setting up the request that triggered an Error
-    return error.message || 'Unknown error occurred';
+    return 'Request failed';
   }
 }
 
-// Helper function to make API calls with retries
+// Helper function to make API calls
 async function fetchWithRetry<T>(url: string, params?: any): Promise<T> {
-  let lastError: Error | null = null;
-  
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const response = await axios.get<T>(url, { params });
-      return response.data;
-    } catch (error) {
-      lastError = error as Error;
-      const errorMessage = formatErrorMessage(error);
-      console.error(`Attempt ${attempt}/${MAX_RETRIES} failed: ${errorMessage}`);
-      if (attempt < MAX_RETRIES) {
-        await delay(RETRY_DELAY * attempt);
-      }
-    }
+  try {
+    const response = await axios.get<T>(url, { params });
+    return response.data;
+  } catch (error) {
+    throw error;
   }
-  
-  throw new Error(`All ${MAX_RETRIES} attempts failed. Last error: ${formatErrorMessage(lastError)}`);
 }
 
 // Helper function to format military time to AM/PM
@@ -216,7 +205,6 @@ async function main() {
     let totalBeatdowns = 0;
     let updatedBeatdowns = 0;
     let newBeatdowns = 0;
-    let deletedBeatdowns = 0;
     const processedIds = new Set<string>();
 
     for (const [batchIndex, batch] of batches.entries()) {
@@ -231,7 +219,12 @@ async function main() {
           const location = locationData.result.data.json.location;
           return transformLocationToBeatdowns(location);
         } catch (error) {
-          console.error(`Error processing location ${locationId}:`, error);
+          if (error instanceof AxiosError) {
+            const status = error.response?.status;
+            console.log(`Location ${locationId}: ${status ? `HTTP ${status}` : 'Failed to fetch'}`);
+          } else {
+            console.log(`Location ${locationId}: Unknown error`);
+          }
           return [];
         }
       });
@@ -244,7 +237,6 @@ async function main() {
       
       for (const beatdownBatch of beatdownBatches) {
         const batch = db.batch();
-        const deleteBatch = db.batch();
         
         for (const beatdown of beatdownBatch) {
           const docId = generateBeatdownId(beatdown);
@@ -270,26 +262,10 @@ async function main() {
       await delay(1000);
     }
 
-    // After all new records are created, delete the old ones
-    console.log('Cleaning up old records...');
-    const deleteBatches = chunk([...existingBeatdowns.keys()], BATCH_SIZE);
-    
-    for (const oldIds of deleteBatches) {
-      const batch = db.batch();
-      for (const oldId of oldIds) {
-        const docRef = db.collection('beatdowns').doc(oldId);
-        batch.delete(docRef);
-        deletedBeatdowns++;
-      }
-      await batch.commit();
-      await delay(1000); // Small delay between delete batches
-    }
-
     console.log(`Migration completed successfully.`);
     console.log(`Total beatdowns processed: ${totalBeatdowns}`);
     console.log(`New beatdowns created: ${newBeatdowns}`);
     console.log(`Existing beatdowns updated: ${updatedBeatdowns}`);
-    console.log(`Old records deleted: ${deletedBeatdowns}`);
 
   } catch (error) {
     console.error('Import failed:', error);
