@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { BeatdownService } from '../../services/beatdown.service';
 import { Beatdown } from '../nearby/nearby.page';
+import { ToastController } from '@ionic/angular';
 
 @Component({
   selector: 'app-workout',
@@ -15,12 +16,17 @@ export class WorkoutPage implements OnInit {
   directionsUrl: string;
   loading = true;
   error = false;
+  canShare = false;
 
   constructor(
     private route: ActivatedRoute,
     private router: Router,
-    private beatdownService: BeatdownService
-  ) {}
+    private beatdownService: BeatdownService,
+    private toastController: ToastController
+  ) {
+    // Check if Web Share API is available
+    this.canShare = 'share' in navigator;
+  }
 
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
@@ -44,6 +50,48 @@ export class WorkoutPage implements OnInit {
         this.loading = false;
       }
     });
+  }
+
+  async shareWorkout() {
+    const url = window.location.href;
+    const title = `${this.workout.name} - ${this.workout.dayOfWeek} at ${this.workout.timeString}`;
+    const text = `Check out this F3 workout: ${this.workout.name} at ${this.workout.address}`;
+
+    if (this.canShare) {
+      try {
+        await navigator.share({
+          title,
+          text,
+          url
+        });
+      } catch (err) {
+        console.error('Error sharing:', err);
+        this.copyToClipboard(url);
+      }
+    } else {
+      this.copyToClipboard(url);
+    }
+  }
+
+  private async copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      const toast = await this.toastController.create({
+        message: 'Link copied to clipboard!',
+        duration: 2000,
+        position: 'bottom'
+      });
+      toast.present();
+    } catch (err) {
+      console.error('Error copying to clipboard:', err);
+      const toast = await this.toastController.create({
+        message: 'Failed to copy link',
+        duration: 2000,
+        position: 'bottom',
+        color: 'danger'
+      });
+      toast.present();
+    }
   }
 
   private loadRelatedWorkouts() {

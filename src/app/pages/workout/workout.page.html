@@ -4,6 +4,11 @@
       <ion-back-button defaultHref="/nearby"></ion-back-button>
     </ion-buttons>
     <ion-title>Workout Details</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="shareWorkout()">
+        <ion-icon [name]="canShare ? 'share-social-outline' : 'copy-outline'" slot="icon-only"></ion-icon>
+      </ion-button>
+    </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
