@@ -1,7 +1,6 @@
 import {Component} from '@angular/core';
 import {ActionSheetController, Platform} from '@ionic/angular';
 import {BeatdownService} from '../../services/beatdown.service';
-import { take } from 'rxjs/operators';
 
 export interface Beatdown {
   id: string;
@@ -105,7 +104,7 @@ export class NearbyPage {
    * Load the beatdowns from Firestore
    */
   loadBeatdowns() {
-    this.beatdownService.getNearbyBeatdowns().pipe(take(1)).subscribe({
+    this.beatdownService.getNearbyBeatdowns().subscribe({
       next: (beatdowns) => {
         this.allBDs = beatdowns;
         this.saveToCache();
