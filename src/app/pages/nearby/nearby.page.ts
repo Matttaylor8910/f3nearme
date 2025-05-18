@@ -28,6 +28,19 @@ interface Coords {
   longitude: number;
 }
 
+interface IPLocation {
+  ip: string;
+  city: string;
+  region: string;
+  country_name: string;
+  country_code: string;
+  postal: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  org: string;
+}
+
 interface RegionCity {
   city: string;
   region: string;
@@ -52,6 +65,9 @@ const DAYS = [
 export class NearbyPage {
   allBDs: Beatdown[];
   nearbyMap = new Map<string, Beatdown[]>;
+  ipLocation: IPLocation | null = null;
+  nearbyCities: RegionCity[] = [];
+  showNearbyCities = false;
 
   days: Day[];
   limit = this.loadLimit();
@@ -83,6 +99,7 @@ export class NearbyPage {
     this.loadFromCache();
     this.setMyLocation();
     this.loadBeatdowns();
+    this.fetchIPLocation();
   }
 
   get filterTooShort(): boolean {
@@ -110,6 +127,7 @@ export class NearbyPage {
         this.saveToCache();
         this.extractRegions();
         this.setNearbyBeatdowns();
+        this.findNearbyCities();
       },
       error: (error) => {
         console.error('Error loading beatdowns:', error);
@@ -146,6 +164,27 @@ export class NearbyPage {
   }
 
   /**
+   * Fetch IP-based location as a fallback
+   */
+  private async fetchIPLocation() {
+    try {
+      const response = await fetch('https://ipapi.co/json/');
+      this.ipLocation = await response.json();
+      
+      // Only set location if we don't have one yet
+      if (!this.myLocation) {
+        this.myLocation = {
+          latitude: this.ipLocation.latitude,
+          longitude: this.ipLocation.longitude
+        };
+        this.findNearbyCities();
+      }
+    } catch (error) {
+      console.error('Error getting IP location:', error);
+    }
+  }
+
+  /**
    * Handle successfully getting the user's location
    */
   onGeolocationSuccess(position: GeolocationPosition) {
@@ -172,7 +211,6 @@ export class NearbyPage {
     this.locationFailure = true;
     this.myLocation = undefined;
     this.showRegionModal = true;
-    // Do not call setNearbyBeatdowns here, as we have no location
   }
 
   /**
@@ -540,5 +578,46 @@ export class NearbyPage {
   clearSearch() {
     this.filterText = '';
     this.setNearbyBeatdowns();
+  }
+
+  /**
+   * Find cities near the IP-based location
+   */
+  private findNearbyCities() {
+    if (!this.myLocation || !this.regions.length) return;
+
+    // Calculate distances and sort
+    const citiesWithDistance = this.regions.map(region => ({
+      ...region,
+      distance: this.distance(
+        region.lat,
+        region.long,
+        this.myLocation.latitude,
+        this.myLocation.longitude
+      )
+    }));
+
+    // Sort by distance and take top 5
+    this.nearbyCities = citiesWithDistance
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 5);
+    
+    this.showNearbyCities = true;
+  }
+
+  /**
+   * Get a friendly message about the approximate location
+   */
+  get approximateLocationMessage(): string {
+    if (!this.ipLocation) return '';
+    
+    let location = this.ipLocation.city;
+    if (this.ipLocation.region && this.ipLocation.region !== location) {
+      location = `${location}, ${this.ipLocation.region}`;
+    } else if (this.ipLocation.country_name && this.ipLocation.country_name !== location) {
+      location = `${location}, ${this.ipLocation.country_name}`;
+    }
+
+    return `Based on your IP address, you appear to be near ${location}. Here are some the closest cities where you can find F3 workouts:`;
   }
 }
