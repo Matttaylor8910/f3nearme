@@ -22,7 +22,6 @@
 
   ion-list {
     padding: 0;
-    --ion-item-background: #1c1c1d;
   }
 
   ion-button {
@@ -33,5 +32,9 @@
 @media (prefers-color-scheme: dark) {
   .map-container iframe {
     filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(1.1);
+  }
+
+  ion-list.list-ios {
+    --ion-item-background: #1c1c1d;
   }
 } 
