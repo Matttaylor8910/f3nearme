@@ -12,7 +12,7 @@ import { ToastController } from '@ionic/angular';
 export class WorkoutPage implements OnInit {
   workout: Beatdown;
   relatedWorkouts: Beatdown[] = [];
-  mapUrl: string;
+  mapEmbedUrl: string;
   directionsUrl: string;
   loading = true;
   error = false;
@@ -39,7 +39,7 @@ export class WorkoutPage implements OnInit {
     this.beatdownService.getBeatdown(id).subscribe({
       next: (workout) => {
         this.workout = workout;
-        this.mapUrl = `https://www.google.com/maps/place/${workout.lat},${workout.long}`;
+        this.mapEmbedUrl = `https://maps.google.com/maps?q=${workout.lat},${workout.long}&t=m&z=16&output=embed`;
         this.directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${workout.lat},${workout.long}`;
         this.loadRelatedWorkouts();
         this.loading = false;
@@ -117,6 +117,6 @@ export class WorkoutPage implements OnInit {
   }
 
   openMap() {
-    window.open(this.mapUrl, '_blank');
+    window.open(`https://www.google.com/maps/place/${this.workout.lat},${this.workout.long}`, '_blank');
   }
 } 
