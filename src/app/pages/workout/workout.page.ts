@@ -39,7 +39,7 @@ export class WorkoutPage implements OnInit {
     this.beatdownService.getBeatdown(id).subscribe({
       next: (workout) => {
         this.workout = workout;
-        this.mapUrl = `https://maps.google.com/maps?q=${workout.lat},${workout.long}&t=m&z=16&output=embed`;
+        this.mapUrl = `https://www.google.com/maps/place/${workout.lat},${workout.long}`;
         this.directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${workout.lat},${workout.long}`;
         this.loadRelatedWorkouts();
         this.loading = false;
