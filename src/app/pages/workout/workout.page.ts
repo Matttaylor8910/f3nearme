@@ -97,7 +97,7 @@ export class WorkoutPage implements OnInit {
   private loadRelatedWorkouts() {
     if (!this.workout) return;
 
-    this.beatdownService.getBeatdownsByAddress(this.workout.address).subscribe({
+    this.beatdownService.getBeatdownsByLatLong(this.workout.lat, this.workout.long).subscribe({
       next: (workouts) => {
         // Filter out the current workout and sort by day
         this.relatedWorkouts = workouts

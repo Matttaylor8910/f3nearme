@@ -43,7 +43,7 @@ interface IPLocation {
 
 interface RegionCity {
   city: string;
-  region: string;
+  regions: string[];
   lat: number;
   long: number;
 }
@@ -451,9 +451,16 @@ export class NearbyPage {
    */
   private extractCity(address: string | null | undefined): string {
     if (!address) return 'Unknown Location';
-    const parts = address.split(',').map(p => p.trim());
+    
+    // Split by comma and clean up the parts
+    const parts = address
+      .split(',')
+      .map(p => p.trim())
+      .filter(p => p.length > 0); // Remove empty parts
+    
     if (parts.length >= 3) {
       // e.g. '123 Main St, Boise, ID, USA' or 'Boise, ID, USA'
+      // Take the last two parts for city,state
       return `${parts[parts.length - 2]}, ${parts[parts.length - 1]}`;
     } else if (parts.length === 2) {
       // e.g. 'Boise, ID'
@@ -475,27 +482,32 @@ export class NearbyPage {
    * Extract unique regions and cities from beatdowns
    */
   private extractRegions() {
-    const regionMap = new Map<string, RegionCity>();
+    const cityMap = new Map<string, RegionCity>();
     
     this.allBDs.forEach(bd => {
       const city = this.extractCity(bd.address);
       const region = bd.region || 'Unknown Region';
-      const key = `${this.normalizeKey(city)}-${this.normalizeKey(region)}`;
-      if (!regionMap.has(key)) {
-        regionMap.set(key, {
+      const key = this.normalizeKey(city);
+      
+      if (!cityMap.has(key)) {
+        cityMap.set(key, {
           city,
-          region,
+          regions: [region],
           lat: bd.lat,
           long: bd.long
         });
+      } else {
+        const cityData = cityMap.get(key);
+        if (!cityData.regions.includes(region)) {
+          cityData.regions.push(region);
+        }
       }
     });
 
-    this.regions = Array.from(regionMap.values())
+    this.regions = Array.from(cityMap.values())
       .sort((a, b) => {
-        // Sort by region first, then city
-        const regionCompare = (a.region || '').localeCompare(b.region || '');
-        return regionCompare !== 0 ? regionCompare : (a.city || '').localeCompare(b.city || '');
+        // Sort by city name
+        return (a.city || '').localeCompare(b.city || '');
       });
     
     this.filteredRegions = [...this.regions];
@@ -515,7 +527,7 @@ export class NearbyPage {
 
     this.filteredRegions = this.regions.filter(rc => 
       rc.city.toLowerCase().includes(searchText) || 
-      rc.region.toLowerCase().includes(searchText)
+      rc.regions.some(r => r.toLowerCase().includes(searchText))
     );
   }
 
@@ -555,7 +567,7 @@ export class NearbyPage {
    */
   get fromLabel(): string {
     if (this.useMyLocation) return 'My Location';
-    if (this.selectedRegion) return `${this.selectedRegion.city || this.selectedRegion.region}`;
+    if (this.selectedRegion) return `${this.selectedRegion.city}`;
     return 'Choose Location';
   }
 

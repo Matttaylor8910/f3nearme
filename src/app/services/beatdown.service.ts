@@ -47,11 +47,11 @@ export class BeatdownService {
   }
 
   /**
-   * Get all beatdowns at a specific address
+   * Get all beatdowns at a specific lat long
    */
-  getBeatdownsByAddress(address: string): Observable<Beatdown[]> {
+  getBeatdownsByLatLong(lat: number, long: number): Observable<Beatdown[]> {
     return this.afs.collection<Beatdown>('beatdowns', ref => 
-      ref.where('address', '==', address)
+      ref.where('lat', '==', lat).where('long', '==', long)
     ).snapshotChanges().pipe(
       map(actions => actions.map(a => {
         const data = a.payload.doc.data() as Beatdown;
