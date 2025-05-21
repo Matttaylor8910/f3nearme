@@ -186,6 +186,8 @@ function generateBeatdownId(beatdown: Beatdown): string {
 interface LocationAnalysis {
   added: number[];
   deleted: number[];
+  newBeatdowns: number;
+  updatedBeatdowns: number;
 }
 
 // Add new function to analyze location changes
@@ -213,9 +215,52 @@ async function analyzeLocationChanges(): Promise<LocationAnalysis> {
   const added = Array.from(apiLocationIds).filter(id => !existingLocationIds.has(id));
   const deleted = Array.from(existingLocationIds).filter(id => !apiLocationIds.has(id));
 
+  // Process new locations in batches
+  let newBeatdowns = 0;
+  let updatedBeatdowns = 0;
+  const batches = chunk(added, 10); // Process 10 locations at a time
+
+  for (const [batchIndex, batch] of batches.entries()) {
+    console.log(`Processing new locations batch ${batchIndex + 1}/${batches.length}`);
+
+    // Process each location in the batch
+    const locationPromises = batch.map(locationId => fetchAndProcessLocation(locationId));
+    const batchResults = await Promise.all(locationPromises);
+    const beatdowns = batchResults.reduce((acc: Beatdown[], curr: Beatdown[]) => acc.concat(curr), []);
+
+    // Write to Firestore in batches
+    const beatdownBatches = chunk(beatdowns, BATCH_SIZE);
+    
+    for (const beatdownBatch of beatdownBatches) {
+      const batch = db.batch();
+      
+      for (const beatdown of beatdownBatch) {
+        const docId = generateBeatdownId(beatdown);
+        const docRef = db.collection('beatdowns').doc(docId);
+        
+        // Check if document exists
+        const doc = await docRef.get();
+        if (doc.exists) {
+          updatedBeatdowns++;
+        } else {
+          newBeatdowns++;
+        }
+        
+        batch.set(docRef, beatdown);
+      }
+
+      await batch.commit();
+    }
+
+    // Add a small delay between batches to avoid rate limiting
+    await delay(1000);
+  }
+
   return {
     added,
-    deleted
+    deleted,
+    newBeatdowns,
+    updatedBeatdowns
   };
 }
 
@@ -250,6 +295,9 @@ async function main() {
       analysis.added.forEach(id => console.log(`- Location ID: ${id}`));
       console.log(`\nDeleted Locations (${analysis.deleted.length}):`);
       analysis.deleted.forEach(id => console.log(`- Location ID: ${id}`));
+      console.log(`\nSync Results:`);
+      console.log(`- New beatdowns created: ${analysis.newBeatdowns}`);
+      console.log(`- Existing beatdowns updated: ${analysis.updatedBeatdowns}`);
       return;
     }
 
