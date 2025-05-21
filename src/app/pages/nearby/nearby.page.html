@@ -165,7 +165,7 @@
     </div>
 
     <!-- Show approximate location message if available -->
-    <div *ngIf="showNearbyCities" class="ion-padding">
+    <div *ngIf="(!days || days?.length === 0) && userLocation" class="ion-padding">
       <p>{{ approximateLocationMessage }}</p>
       
       <!-- Show nearby cities -->

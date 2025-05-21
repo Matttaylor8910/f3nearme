@@ -220,7 +220,7 @@ export class NearbyPage {
    */
   setNearbyBeatdowns() {
     // no-op if we don't have beatdowns or a selected location
-    if (!this.allBDs) return;
+    if (!this.selectedLocation || !this.allBDs) return;
 
     // don't try to build up the days with too small of a filter text for
     // performance reasons
@@ -311,14 +311,6 @@ export class NearbyPage {
         const dateDisplay = this.getDateDisplay(today, i);
         this.days.push({daysFromToday: i, dateDisplay, beatdowns});
       }
-    }
-
-    // if we have no selected location, or if this.days is empty, show the 
-    // nearby cities so long as we have the user's location
-    if (this.days?.length === 0) {
-      this.showNearbyCities = !!this.userLocation;
-    } else {
-      this.showNearbyCities = false;
     }
 
     // if this was an ionic scroll event, complete it
