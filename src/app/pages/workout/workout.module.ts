@@ -5,6 +5,7 @@ import { IonicModule } from '@ionic/angular';
 import { WorkoutPageRoutingModule } from './workout-routing.module';
 import { WorkoutPage } from './workout.page';
 import { PipesModule } from '../../pipes/pipes.module';
+import { LinkifyPipe } from '../../pipes/linkify.pipe';
 
 @NgModule({
   imports: [
@@ -14,6 +15,9 @@ import { PipesModule } from '../../pipes/pipes.module';
     WorkoutPageRoutingModule,
     PipesModule
   ],
-  declarations: [WorkoutPage]
+  declarations: [
+    WorkoutPage,
+    LinkifyPipe
+  ]
 })
 export class WorkoutPageModule {} 

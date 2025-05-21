@@ -18,7 +18,7 @@
       </ion-button>
     </div>
   </ion-toolbar>
-  <ion-toolbar>
+  <ion-toolbar class="search-bar-container">
     <ion-searchbar
       mode="ios"
       [(ngModel)]="filterText"
@@ -31,14 +31,21 @@
 
 <ion-content [fullscreen]="true">
   <!-- Location warning -->
-  <ion-header *ngIf="locationFailure && !dismissed">
+  <ion-header *ngIf="locationFailure">
     <ion-toolbar color="warning">
-      <ion-title>Location Services Disabled</ion-title>
+      <ion-title mode="md">
+        Location services disabled
+      </ion-title>
       <ion-buttons slot="end">
-        <ion-button (click)="dismissLocationWarning()">
-          <ion-icon name="close"></ion-icon>
+        <ion-button [href]="locationHelpLink" target="_blank">
+          <ion-icon name="help-circle-outline"></ion-icon>
         </ion-button>
       </ion-buttons>
+    </ion-toolbar>
+    <ion-toolbar *ngIf="ipLocation">
+      <ion-title class="padding-none">
+        Estimating location based on IP address
+      </ion-title>
     </ion-toolbar>
   </ion-header>
 
@@ -81,28 +88,6 @@
 
   <!-- Main content -->
   <div *ngIf="allBDs; else loading">
-    <!-- location load failure message -->
-    <ion-text color="medium" *ngIf="locationFailure && days?.length > 0">
-      <h4 class="padding">
-        Couldn't load location.
-      </h4>
-      <ng-container *ngIf="!dismissed">
-        <h4 class="resolve-issue-container padding">
-          <ion-text color="danger">
-            To resolve this issue, modify the location privacy settings on your device for your web browser app (Safari/Chrome/etc.):
-          </ion-text>
-          <div class="buttons">
-            <ion-button class="space-above" expand="block" color="primary" [href]="locationHelpLink" target="_blank">
-              Learn More
-            </ion-button>
-            <ion-button class="space-above" expand="block" color="medium" fill="clear" (click)="dismissLocationWarning()">
-              Dismiss
-            </ion-button>
-          </div>
-        </h4>
-      </ng-container>
-    </ion-text>
-
     <!-- list of workouts, grouped by day -->
     <div *ngFor="let day of days">
       <h2 class="padding">
@@ -148,11 +133,13 @@
     </div>
 
     <!-- no workouts nearby -->
-    <ion-text color="medium" *ngIf="days?.length === 0">
-      <h3 class="padding">
-        {{ emptyText }}
-      </h3>
-    </ion-text>
+    <div *ngIf="days && days.length === 0" class="empty-state">
+      <ion-text color="medium">
+        <h3 class="padding">
+          {{ emptyText }}
+        </h3>
+      </ion-text>
+    </div>
 
     <!-- Empty state if no location is selected and modal is closed -->
     <div *ngIf="!selectedLocation" class="empty-state">

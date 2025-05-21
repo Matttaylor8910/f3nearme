@@ -77,7 +77,6 @@ export class NearbyPage {
   selectedLocation: Coords | null = null;
   locationFailure = false;
   locationHelpLink = this.getLocationHelpLink();
-  dismissed = false;
 
   // Region selection
   showRegionSelector = false;
@@ -169,12 +168,13 @@ export class NearbyPage {
       this.ipLocation = await response.json();
       
       // Only set location if we don't have one yet
-      if (!this.myLocation) {
-        this.myLocation = {
+      if (!this.selectedLocation) {
+        this.selectedLocation = {
           latitude: this.ipLocation.latitude,
           longitude: this.ipLocation.longitude
         };
         this.extractCities();
+        this.setNearbyBeatdowns();
       }
     } catch (error) {
       console.error('Error getting IP location:', error);
@@ -393,13 +393,6 @@ export class NearbyPage {
     if (!['backdrop', 'cancel'].includes(role)) {
       this.updateLimit(Number(role));
     }
-  }
-
-  /**
-   * Temporarily dismiss the location warning
-   */
-  dismissLocationWarning() {
-    this.dismissed = true;
   }
 
   /**

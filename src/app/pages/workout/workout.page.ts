@@ -84,13 +84,6 @@ export class WorkoutPage implements OnInit {
       toast.present();
     } catch (err) {
       console.error('Error copying to clipboard:', err);
-      const toast = await this.toastController.create({
-        message: 'Failed to copy link',
-        duration: 2000,
-        position: 'bottom',
-        color: 'danger'
-      });
-      toast.present();
     }
   }
 

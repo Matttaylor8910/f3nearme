@@ -25,7 +25,7 @@
 
   <div *ngIf="!loading && !error && workout" class="workout-details">
     <!-- Map -->
-    <div class="map-container">
+    <div class="map-container" (click)="openMap()">
       <iframe
         [src]="mapUrl | safe"
         width="100%"
@@ -36,6 +36,12 @@
         referrerpolicy="no-referrer-when-downgrade">
       </iframe>
     </div>
+
+
+    <ion-button expand="block" (click)="openDirections()">
+      <ion-icon name="navigate-outline" slot="start"></ion-icon>
+      Get Directions
+    </ion-button>
 
     <!-- Workout Details -->
     <ion-card>
@@ -50,7 +56,7 @@
         <ion-list lines="none">
           <ion-item>
             <ion-icon name="location-outline" slot="start"></ion-icon>
-            <ion-label>
+            <ion-label class="ion-text-wrap" (click)="openDirections()">
               <h2>{{workout.address}}</h2>
               <p *ngIf="workout.milesFromMe">About {{workout.milesFromMe | number:'1.0-1'}} miles away</p>
             </ion-label>
@@ -58,7 +64,7 @@
 
           <ion-item *ngIf="workout.type">
             <ion-icon name="fitness-outline" slot="start"></ion-icon>
-            <ion-label>
+            <ion-label class="ion-text-wrap">
               <h2>Type</h2>
               <p>{{workout.type}}</p>
             </ion-label>
@@ -66,7 +72,7 @@
 
           <ion-item *ngIf="workout.region">
             <ion-icon name="globe-outline" slot="start"></ion-icon>
-            <ion-label>
+            <ion-label class="ion-text-wrap">
               <h2>Region</h2>
               <p>{{workout.region}}</p>
             </ion-label>
@@ -76,30 +82,17 @@
             <ion-icon name="information-circle-outline" slot="start"></ion-icon>
             <ion-label class="ion-text-wrap">
               <h2>Notes</h2>
-              <p>{{workout.notes}}</p>
+              <p [innerHTML]="workout.notes | linkify"></p>
             </ion-label>
           </ion-item>
         </ion-list>
+
+        <ion-button expand="block" fill="clear" (click)="openWebsite()" *ngIf="workout.website">
+          <ion-icon name="globe-outline" slot="start"></ion-icon>
+          Visit Region Website
+        </ion-button>
       </ion-card-content>
     </ion-card>
-
-    <!-- Action Buttons -->
-    <ion-list>
-      <ion-button expand="block" (click)="openDirections()">
-        <ion-icon name="navigate-outline" slot="start"></ion-icon>
-        Get Directions
-      </ion-button>
-
-      <ion-button expand="block" (click)="openMap()">
-        <ion-icon name="map-outline" slot="start"></ion-icon>
-        View on Map
-      </ion-button>
-
-      <ion-button expand="block" (click)="openWebsite()" *ngIf="workout.website">
-        <ion-icon name="globe-outline" slot="start"></ion-icon>
-        Visit Website
-      </ion-button>
-    </ion-list>
 
     <!-- Related Workouts -->
     <ion-card *ngIf="relatedWorkouts.length > 0">
