@@ -1,10 +1,11 @@
 {
-  "name": "f3-beatdown-import",
+  "name": "f3-near-me-scripts",
   "version": "1.0.0",
-  "description": "Script to import F3 beatdown data into Firestore",
-  "main": "import-beatdowns.ts",
+  "description": "Script to sync F3 beatdown data into Firestore",
+  "main": "sync-beatdowns.ts",
   "scripts": {
-    "start": "ts-node import-beatdowns.ts"
+    "start": "ts-node sync-beatdowns.ts",
+    "analyze": "ts-node sync-beatdowns.ts --analyze"
   },
   "dependencies": {
     "axios": "^1.6.7",

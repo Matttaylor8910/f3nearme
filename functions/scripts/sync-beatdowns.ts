@@ -219,6 +219,80 @@ async function analyzeLocationChanges(): Promise<LocationAnalysis> {
   };
 }
 
+// Add new function to fetch and process a single location
+async function fetchAndProcessLocation(locationId: number): Promise<Beatdown[]> {
+  try {
+    const url = `${LOCATION_DATA_URL}?input={"json":{"locationId":${locationId}}}`;
+    const locationData = await fetchWithRetry<LocationDataResponse>(url);
+    const location = locationData.result.data.json.location;
+    return transformLocationToBeatdowns(location);
+  } catch (error) {
+    if (error instanceof AxiosError) {
+      const status = error.response?.status;
+      console.log(`Location ${locationId}: ${status ? `HTTP ${status}` : 'Failed to fetch'}`);
+    } else {
+      console.log(`Location ${locationId}: Unknown error`);
+    }
+    return [];
+  }
+}
+
+// Add new function to sync specific locations
+async function syncSpecificLocations(locationIds: number[]) {
+  console.log(`Starting sync for ${locationIds.length} specific locations...`);
+  
+  let totalBeatdowns = 0;
+  let updatedBeatdowns = 0;
+  let newBeatdowns = 0;
+  const processedIds = new Set<string>();
+
+  // Process locations in batches
+  const batches = chunk(locationIds, 10); // Process 10 locations at a time
+
+  for (const [batchIndex, batch] of batches.entries()) {
+    console.log(`Processing batch ${batchIndex + 1}/${batches.length}`);
+
+    // Process each location in the batch
+    const locationPromises = batch.map(locationId => fetchAndProcessLocation(locationId));
+    const batchResults = await Promise.all(locationPromises);
+    const beatdowns = batchResults.reduce((acc: Beatdown[], curr: Beatdown[]) => acc.concat(curr), []);
+
+    // Write to Firestore in batches
+    const beatdownBatches = chunk(beatdowns, BATCH_SIZE);
+    
+    for (const beatdownBatch of beatdownBatches) {
+      const batch = db.batch();
+      
+      for (const beatdown of beatdownBatch) {
+        const docId = generateBeatdownId(beatdown);
+        const docRef = db.collection('beatdowns').doc(docId);
+        processedIds.add(docId);
+        
+        // Check if document exists
+        const doc = await docRef.get();
+        if (doc.exists) {
+          updatedBeatdowns++;
+        } else {
+          newBeatdowns++;
+        }
+        
+        batch.set(docRef, beatdown);
+      }
+
+      await batch.commit();
+      totalBeatdowns += beatdownBatch.length;
+    }
+
+    // Add a small delay between batches to avoid rate limiting
+    await delay(1000);
+  }
+
+  console.log(`Sync completed successfully.`);
+  console.log(`Total beatdowns processed: ${totalBeatdowns}`);
+  console.log(`New beatdowns created: ${newBeatdowns}`);
+  console.log(`Existing beatdowns updated: ${updatedBeatdowns}`);
+}
+
 async function main() {
   try {
     // Check if we're in analysis mode
@@ -264,24 +338,7 @@ async function main() {
       console.log(`Processing batch ${batchIndex + 1}/${batches.length}`);
 
       // Process each location in the batch
-      const locationPromises = batch.map(async ([locationId, , , , , , ]: [number, string, string | null, number, number, string, Array<[number, string, string, string, Array<{id: number, name: string}>]>]) => {
-        try {
-          const url = `${LOCATION_DATA_URL}?input={"json":{"locationId":${locationId}}}`;
-          const locationData = await fetchWithRetry<LocationDataResponse>(url);
-
-          const location = locationData.result.data.json.location;
-          return transformLocationToBeatdowns(location);
-        } catch (error) {
-          if (error instanceof AxiosError) {
-            const status = error.response?.status;
-            console.log(`Location ${locationId}: ${status ? `HTTP ${status}` : 'Failed to fetch'}`);
-          } else {
-            console.log(`Location ${locationId}: Unknown error`);
-          }
-          return [];
-        }
-      });
-
+      const locationPromises = batch.map(([locationId]) => fetchAndProcessLocation(locationId));
       const batchResults = await Promise.all(locationPromises);
       const beatdowns = batchResults.reduce((acc: Beatdown[], curr: Beatdown[]) => acc.concat(curr), []);
 
