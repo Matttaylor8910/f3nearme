@@ -82,8 +82,8 @@ export class NearbyPage {
 
   // Region selection
   showRegionSelector = false;
-  regions: RegionCity[] = [];
-  filteredRegions: RegionCity[] = [];
+  cities: RegionCity[] = [];
+  filteredCities: RegionCity[] = [];
   regionSearchText = '';
 
   selectedRegion: RegionCity | null = null;
@@ -507,13 +507,13 @@ export class NearbyPage {
       }
     });
 
-    this.regions = Array.from(cityMap.values())
+    this.cities = Array.from(cityMap.values())
       .sort((a, b) => {
         // Sort by city name
         return (a.city || '').localeCompare(b.city || '');
       });
     
-    this.filteredRegions = [...this.regions];
+    this.filteredCities = [...this.cities];
   }
 
   /**
@@ -524,11 +524,11 @@ export class NearbyPage {
     this.regionSearchText = searchText;
     
     if (!searchText) {
-      this.filteredRegions = [...this.regions];
+      this.filteredCities = [...this.cities];
       return;
     }
 
-    this.filteredRegions = this.regions.filter(rc => 
+    this.filteredCities = this.cities.filter(rc => 
       rc.city.toLowerCase().includes(searchText) || 
       rc.regions.some(r => r.toLowerCase().includes(searchText))
     );
@@ -580,7 +580,7 @@ export class NearbyPage {
   openRegionModal() {
     this.showRegionModal = true;
     this.regionSearchText = '';
-    this.filteredRegions = [...this.regions];
+    this.filteredCities = [...this.cities];
   }
 
   /**
@@ -599,10 +599,10 @@ export class NearbyPage {
    * Find cities near the IP-based location
    */
   private findNearbyCities() {
-    if (!this.selectedLocation || !this.regions.length) return;
+    if (!this.selectedLocation || !this.cities.length) return;
 
     // Calculate distances and sort
-    const citiesWithDistance = this.regions.map(region => ({
+    const citiesWithDistance = this.cities.map(region => ({
       ...region,
       distance: this.distance(
         region.lat,
