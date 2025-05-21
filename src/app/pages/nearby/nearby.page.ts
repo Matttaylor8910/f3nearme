@@ -46,6 +46,7 @@ interface RegionCity {
   regions: string[];
   lat: number;
   long: number;
+  distance?: number;  // Distance from current location
 }
 
 const MILES_OPTIONS = [10, 20, 30, 50, 100];
@@ -66,8 +67,6 @@ export class NearbyPage {
   allBDs: Beatdown[];
   nearbyMap = new Map<string, Beatdown[]>;
   ipLocation: IPLocation | null = null;
-  nearbyCities: RegionCity[] = [];
-  showNearbyCities = false;
 
   days: Day[];
   limit = this.loadLimit();
@@ -84,11 +83,11 @@ export class NearbyPage {
   showRegionSelector = false;
   cities: RegionCity[] = [];
   filteredCities: RegionCity[] = [];
-  regionSearchText = '';
+  citySearchText = '';
 
-  selectedRegion: RegionCity | null = null;
-  useMyLocation: boolean = true;
+  selectedCity: RegionCity | null = null;
   showRegionModal = false;
+  showNearbyCities = false;
 
   constructor(
       private readonly beatdownService: BeatdownService,
@@ -126,9 +125,8 @@ export class NearbyPage {
       next: (beatdowns) => {
         this.allBDs = beatdowns;
         this.saveToCache();
-        this.extractRegions();
+        this.extractCities();
         this.setNearbyBeatdowns();
-        this.findNearbyCities();
       },
       error: (error) => {
         console.error('Error loading beatdowns:', error);
@@ -141,7 +139,6 @@ export class NearbyPage {
    * Try to get the user's location
    */
   setMyLocation() {
-    this.useMyLocation = true;
     try {
       if (navigator.geolocation) {
         const options = {
@@ -178,7 +175,7 @@ export class NearbyPage {
           latitude: this.ipLocation.latitude,
           longitude: this.ipLocation.longitude
         };
-        this.findNearbyCities();
+        this.extractCities();
       }
     } catch (error) {
       console.error('Error getting IP location:', error);
@@ -193,7 +190,10 @@ export class NearbyPage {
     this.myLocation = {latitude, longitude};
     this.selectedLocation = {latitude, longitude};  // Set selected location to match my location
     this.locationFailure = false;
-    this.setNearbyBeatdowns();
+    setTimeout(() => {
+      this.extractCities();
+      this.setNearbyBeatdowns();
+    });
   }
 
   /**
@@ -213,7 +213,6 @@ export class NearbyPage {
     this.locationFailure = true;
     this.myLocation = null;
     this.selectedLocation = null;
-    this.showRegionModal = true;
   }
 
   /**
@@ -221,7 +220,7 @@ export class NearbyPage {
    */
   setNearbyBeatdowns() {
     // no-op if we don't have beatdowns or a selected location
-    if (!this.selectedLocation || !this.allBDs) return;
+    if (!this.allBDs) return;
 
     // don't try to build up the days with too small of a filter text for
     // performance reasons
@@ -244,8 +243,13 @@ export class NearbyPage {
       );
 
       // Only set milesFromMe if we're using my location
-      if (this.useMyLocation) {
-        bd.milesFromMe = dist;
+      if (this.userLocation) {
+        bd.milesFromMe = this.distance(
+          bd.lat,
+          bd.long,
+          this.userLocation.latitude,
+          this.userLocation.longitude,
+        );
       }
 
       return this.filterText ? this.appliesToFilter(bd) : dist < this.limit;
@@ -253,7 +257,7 @@ export class NearbyPage {
 
     // sort the bds by distance from your location if using my location,
     // otherwise sort by time and then alphabetically
-    if (this.useMyLocation) {
+    if (this.userLocation) {
       nearby.sort((a, b) => a.milesFromMe - b.milesFromMe);
     } else {
       nearby.sort((a, b) => {
@@ -307,6 +311,14 @@ export class NearbyPage {
         const dateDisplay = this.getDateDisplay(today, i);
         this.days.push({daysFromToday: i, dateDisplay, beatdowns});
       }
+    }
+
+    // if we have no selected location, or if this.days is empty, show the 
+    // nearby cities so long as we have the user's location
+    if (this.days?.length === 0) {
+      this.showNearbyCities = !!this.userLocation;
+    } else {
+      this.showNearbyCities = false;
     }
 
     // if this was an ionic scroll event, complete it
@@ -484,8 +496,11 @@ export class NearbyPage {
   /**
    * Extract unique regions and cities from beatdowns
    */
-  private extractRegions() {
+  private extractCities() {
+    if (!this.allBDs) return;
+
     const cityMap = new Map<string, RegionCity>();
+    const userLoc = this.userLocation;
     
     this.allBDs.forEach(bd => {
       const city = this.extractCity(bd.address);
@@ -497,7 +512,13 @@ export class NearbyPage {
           city,
           regions: [region],
           lat: bd.lat,
-          long: bd.long
+          long: bd.long,
+          distance: userLoc ? this.distance(
+            bd.lat, 
+            bd.long, 
+            userLoc.latitude,
+            userLoc.longitude
+          ) : undefined,
         });
       } else {
         const cityData = cityMap.get(key);
@@ -509,19 +530,19 @@ export class NearbyPage {
 
     this.cities = Array.from(cityMap.values())
       .sort((a, b) => {
-        // Sort by city name
-        return (a.city || '').localeCompare(b.city || '');
+        // Sort by distance, fall back to city name
+        return (a.distance || 0) - (b.distance || 0) || a.city.localeCompare(b.city);
       });
     
     this.filteredCities = [...this.cities];
   }
 
   /**
-   * Filter regions based on search text
+   * Filter cities based on search text
    */
-  filterRegions(event: any) {
+  filterCities(event: any) {
     const searchText = event.target.value.toLowerCase();
-    this.regionSearchText = searchText;
+    this.citySearchText = searchText;
     
     if (!searchText) {
       this.filteredCities = [...this.cities];
@@ -535,14 +556,13 @@ export class NearbyPage {
   }
 
   /**
-   * Handle region selection
+   * Handle city selection
    */
-  selectRegion(region: RegionCity) {
-    this.selectedRegion = region;
-    this.useMyLocation = false;
+  selectCity(city: RegionCity) {
+    this.selectedCity = city;
     this.selectedLocation = {
-      latitude: region.lat,
-      longitude: region.long
+      latitude: city.lat,
+      longitude: city.long
     };
     this.locationFailure = false;
     this.showRegionModal = false;
@@ -553,9 +573,9 @@ export class NearbyPage {
    * When user selects "My Location" from modal
    */
   selectMyLocation() {
-    this.selectedRegion = null;
-    this.useMyLocation = true;
+    this.selectedCity = null;
     this.showRegionModal = false;
+    this.selectedLocation = null;
     
     // If we already know location access is denied, don't try again
     if (this.locationFailure) {
@@ -569,9 +589,25 @@ export class NearbyPage {
    * For the "From" dropdown label
    */
   get fromLabel(): string {
-    if (this.useMyLocation) return 'My Location';
-    if (this.selectedRegion) return `${this.selectedRegion.city}`;
+    if (this.selectedCity) return `${this.selectedCity.city}`;
+    if (this.userLocation && this.selectedLocation) return 'My Location';
     return 'Choose Location';
+  }
+
+  /**
+   * Get the user's current location, preferring myLocation and falling back to ipLocation
+   */
+  get userLocation(): Coords | null {
+    if (this.myLocation) {
+      return this.myLocation;
+    }
+    if (this.ipLocation) {
+      return {
+        latitude: this.ipLocation.latitude,
+        longitude: this.ipLocation.longitude
+      };
+    }
+    return null;
   }
 
   /**
@@ -579,7 +615,7 @@ export class NearbyPage {
    */
   openRegionModal() {
     this.showRegionModal = true;
-    this.regionSearchText = '';
+    this.citySearchText = '';
     this.filteredCities = [...this.cities];
   }
 
@@ -596,36 +632,17 @@ export class NearbyPage {
   }
 
   /**
-   * Find cities near the IP-based location
-   */
-  private findNearbyCities() {
-    if (!this.selectedLocation || !this.cities.length) return;
-
-    // Calculate distances and sort
-    const citiesWithDistance = this.cities.map(region => ({
-      ...region,
-      distance: this.distance(
-        region.lat,
-        region.long,
-        this.selectedLocation.latitude,
-        this.selectedLocation.longitude
-      )
-    }));
-
-    // Sort by distance and take top 5
-    this.nearbyCities = citiesWithDistance
-      .sort((a, b) => a.distance - b.distance)
-      .slice(0, 5);
-    
-    this.showNearbyCities = true;
-  }
-
-  /**
    * Get a friendly message about the approximate location
    */
   get approximateLocationMessage(): string {
-    if (!this.ipLocation) return '';
+    if (!this.userLocation) return '';
+
+    // if we have the user's location, just point them to nearby cities
+    if (this.myLocation) {
+      return `Here are some the closest cities where you can find F3 workouts:`;
+    }
     
+    // if we don't have the user's location, use the IP location
     let location = this.ipLocation.city;
     if (this.ipLocation.region && this.ipLocation.region !== location) {
       location = `${location}, ${this.ipLocation.region}`;
