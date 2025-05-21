@@ -136,7 +136,7 @@
             <p>
               <a
                 target="_blank"
-                href="https://www.google.com/maps/dir/?api=1&destination={{bd.address}}"
+                href="https://www.google.com/maps/dir/?api=1&destination={{bd.lat}},{{bd.long}}"
                 [innerHtml]="bd.address | highlight:filterText"
                 (click)="$event.stopPropagation()">
               </a>
