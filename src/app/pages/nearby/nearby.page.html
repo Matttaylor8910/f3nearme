@@ -70,9 +70,9 @@
         ></ion-searchbar>
         <ion-list>
           <ion-item *ngFor="let region of filteredRegions" (click)="selectRegion(region)">
-            <ion-label>
-              <h2>{{region.region}}</h2>
-              <p>{{region.city}}</p>
+            <ion-label class="ion-text-wrap">
+              <h2>{{region.city}}</h2>
+              <p>{{region.regions.length === 1 ? 'Region' : 'Regions'}}: {{region.regions.join(', ')}}</p>
             </ion-label>
           </ion-item>
         </ion-list>
