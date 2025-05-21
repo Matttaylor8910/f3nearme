@@ -58,6 +58,20 @@ const DAYS = [
   'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
 ];
 
+const STATE_MAP = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+  'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
+  'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
+  'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+  'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO',
+  'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+  'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH',
+  'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT',
+  'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY',
+  'district of columbia': 'DC'
+};
+
 @Component({
   selector: 'app-nearby',
   templateUrl: 'nearby.page.html',
@@ -534,10 +548,22 @@ export class NearbyPage {
       return;
     }
 
-    this.filteredCities = this.cities.filter(rc => 
-      rc.city.toLowerCase().includes(searchText) || 
-      rc.regions.some(r => r.toLowerCase().includes(searchText))
-    );
+    // Check if the search text matches a state name
+    const matchingStates = Object.entries(STATE_MAP).filter(([state, abbr]) => state.toLowerCase().includes(searchText) || abbr.toLowerCase().includes(searchText));
+
+    this.filteredCities = this.cities.filter(rc => {
+      // If searching for a state, check if the city's state matches
+      if (matchingStates.length > 0) {
+        const cityState = rc.city.split(',').pop()?.trim().toLowerCase();
+        if (matchingStates.some(([state, abbr]) => cityState === state.toLowerCase() || cityState === abbr.toLowerCase())) {
+          return true;
+        }
+      }
+      
+      // Otherwise do the normal city/region search
+      return rc.city.toLowerCase().includes(searchText) || 
+             rc.regions.some(r => r.toLowerCase().includes(searchText));
+    });
   }
 
   /**
@@ -560,7 +586,10 @@ export class NearbyPage {
   selectMyLocation() {
     this.selectedCity = null;
     this.showRegionModal = false;
-    this.selectedLocation = null;
+    this.selectedLocation = {
+      latitude: this.myLocation?.latitude,
+      longitude: this.myLocation?.longitude
+    };
     
     // If we already know location access is denied, don't try again
     if (this.locationFailure) {

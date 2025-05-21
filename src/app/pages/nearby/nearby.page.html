@@ -63,6 +63,7 @@
       <ion-content class="ion-padding">
         <!-- Region and city search -->
         <ion-searchbar
+          mode="ios"
           [(ngModel)]="citySearchText"
           (ionInput)="filterCities($event)"
           placeholder="Search by region or city"
