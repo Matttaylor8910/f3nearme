@@ -653,17 +653,16 @@ export class NearbyPage {
 
     // if we have the user's location, just point them to nearby cities
     if (this.myLocation) {
-      return `Here are some the closest cities where you can find F3 workouts:`;
+      return `Here are some of the closest cities where you can find F3 workouts:`;
     }
     
-    // if we don't have the user's location, use the IP location
+    // if we don't have the user's location, use the IP location and tell them how we know
     let location = this.ipLocation.city;
     if (this.ipLocation.region && this.ipLocation.region !== location) {
       location = `${location}, ${this.ipLocation.region}`;
     } else if (this.ipLocation.country_name && this.ipLocation.country_name !== location) {
       location = `${location}, ${this.ipLocation.country_name}`;
     }
-
-    return `Based on your IP address, you appear to be near ${location}. Here are some the closest cities where you can find F3 workouts:`;
+    return `Based on your IP address, you appear to be near ${location}. Here are some of the closest cities where you can find F3 workouts:`;
   }
 }
