@@ -113,8 +113,6 @@ interface LocationDataResponse {
 const MAP_EVENTS_URL = 'https://map.f3nation.com/api/trpc/location.getMapEventAndLocationData';
 const LOCATION_DATA_URL = 'https://map.f3nation.com/api/trpc/location.getLocationWorkoutData';
 const BATCH_SIZE = 500; // Firestore batch write limit
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
 
 // Helper function to delay execution
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -184,8 +182,59 @@ function generateBeatdownId(beatdown: Beatdown): string {
   return baseString.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 }
 
+// Add new interface for location analysis
+interface LocationAnalysis {
+  added: number[];
+  deleted: number[];
+}
+
+// Add new function to analyze location changes
+async function analyzeLocationChanges(): Promise<LocationAnalysis> {
+  console.log('Analyzing location changes...');
+
+  // Get all existing beatdowns and extract unique locationIds
+  const existingBeatdownsSnapshot = await db.collection('beatdowns').get();
+  const existingLocationIds = new Set<number>();
+  
+  existingBeatdownsSnapshot.forEach((doc: admin.firestore.QueryDocumentSnapshot) => {
+    const data = doc.data() as Beatdown;
+    existingLocationIds.add(data.locationId);
+  });
+  
+  console.log(`Found ${existingLocationIds.size} unique locations in database`);
+
+  // Fetch all locations from the API
+  const mapEventsResponse = await fetchWithRetry<MapEventsResponse>(MAP_EVENTS_URL);
+  const apiLocationIds = new Set(mapEventsResponse.result.data.json.map(([locationId]) => locationId));
+  
+  console.log(`Found ${apiLocationIds.size} locations in API`);
+
+  // Find added and deleted locations
+  const added = Array.from(apiLocationIds).filter(id => !existingLocationIds.has(id));
+  const deleted = Array.from(existingLocationIds).filter(id => !apiLocationIds.has(id));
+
+  return {
+    added,
+    deleted
+  };
+}
+
 async function main() {
   try {
+    // Check if we're in analysis mode
+    const isAnalysisMode = process.argv.includes('--analyze');
+    
+    if (isAnalysisMode) {
+      const analysis = await analyzeLocationChanges();
+      console.log('\nLocation Analysis Results:');
+      console.log('------------------------');
+      console.log(`Added Locations (${analysis.added.length}):`);
+      analysis.added.forEach(id => console.log(`- Location ID: ${id}`));
+      console.log(`\nDeleted Locations (${analysis.deleted.length}):`);
+      analysis.deleted.forEach(id => console.log(`- Location ID: ${id}`));
+      return;
+    }
+
     console.log('Starting beatdown import...');
 
     // First, fetch all existing beatdowns to track what needs to be migrated
