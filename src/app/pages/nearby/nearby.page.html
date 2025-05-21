@@ -54,24 +54,6 @@
         </ion-toolbar>
       </ion-header>
       <ion-content class="ion-padding">
-        <!-- Show approximate location message if available -->
-        <div *ngIf="ipLocation" class="ion-padding-bottom">
-          <p>{{ approximateLocationMessage }}</p>
-          
-          <!-- Show nearby cities -->
-          <ion-list *ngIf="showNearbyCities">
-            <ion-item *ngFor="let city of nearbyCities" (click)="selectRegion(city)">
-              <ion-label>
-                <h2>{{ city.city }}</h2>
-                <p>{{ city.region }}</p>
-                <p *ngIf="city.distance" class="distance">
-                  {{ city.distance | number:'1.0-1' }} miles away
-                </p>
-              </ion-label>
-            </ion-item>
-          </ion-list>
-        </div>
-
         <!-- Existing region search -->
         <ion-searchbar
           [(ngModel)]="regionSearchText"
@@ -82,8 +64,8 @@
 
         <ion-list>
           <ion-item (click)="selectMyLocation()">
-            <ion-icon name="location" slot="start"></ion-icon>
             <ion-label>Use My Location</ion-label>
+            <ion-icon name="location" slot="end"></ion-icon>
           </ion-item>
 
           <ion-item *ngFor="let region of filteredRegions" (click)="selectRegion(region)">
@@ -98,7 +80,7 @@
   </ion-modal>
 
   <!-- Main content -->
-  <div *ngIf="days; else loading">
+  <div *ngIf="allBDs; else loading">
     <!-- location load failure message -->
     <ion-text color="medium" *ngIf="locationFailure && days?.length > 0">
       <h4 class="padding">
@@ -170,6 +152,30 @@
       <h3 class="padding">
         {{ emptyText }}
       </h3>
+
+      <!-- Show approximate location message if available -->
+      <div *ngIf="ipLocation" class="ion-padding">
+        <p>{{ approximateLocationMessage }}</p>
+        
+        <!-- Show nearby cities -->
+        <ion-list *ngIf="showNearbyCities; else loading" class="nearby-cities">
+          <ion-item *ngFor="let city of nearbyCities" (click)="selectRegion(city)">
+            <ion-label>
+              <h2>{{ city.city }}</h2>
+              <p>{{ city.region }}</p>
+              <p *ngIf="city.distance" class="distance">
+                {{ city.distance | number:'1.0-1' }} miles away
+              </p>
+            </ion-label>
+          </ion-item>
+
+          <ion-item *ngIf="nearbyCities.length === 0">
+            <ion-label>
+              <p>No nearby cities found 🤔</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+      </div>
     </ion-text>
 
     <!-- infinite scroll handler -->
@@ -182,34 +188,12 @@
   </div>
 
   <!-- Empty state if no location is selected and modal is closed -->
-  <div *ngIf="!myLocation && !showRegionModal" class="empty-state">
+  <div *ngIf="!selectedLocation && !showRegionModal" class="empty-state">
     <ion-text color="medium">
       <h3 class="padding">
         No location selected.<br>
         Please choose a region or city to see nearby workouts.
       </h3>
-
-      <!-- Show approximate location message if available -->
-      <div *ngIf="ipLocation" class="ion-padding">
-        <p>{{ approximateLocationMessage }}</p>
-        
-        <!-- Show nearby cities -->
-        <ion-list *ngIf="showNearbyCities" class="nearby-cities">
-          <ion-item *ngFor="let city of nearbyCities" (click)="selectRegion(city)">
-            <ion-label>
-              <h2>{{ city.city }}</h2>
-              <p>{{ city.region }}</p>
-              <p *ngIf="city.distance" class="distance">
-                {{ city.distance | number:'1.0-1' }} miles away
-              </p>
-            </ion-label>
-          </ion-item>
-        </ion-list>
-      </div>
-
-      <ion-button expand="block" color="primary" (click)="openRegionModal()">
-        Choose Location
-      </ion-button>
     </ion-text>
   </div>
 

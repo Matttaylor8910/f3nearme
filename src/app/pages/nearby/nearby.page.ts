@@ -74,7 +74,8 @@ export class NearbyPage {
   showRegion = false;
   filterText: string;
 
-  myLocation: Coords;
+  myLocation: Coords | null = null;
+  selectedLocation: Coords | null = null;
   locationFailure = false;
   locationHelpLink = this.getLocationHelpLink();
   dismissed = false;
@@ -190,6 +191,7 @@ export class NearbyPage {
   onGeolocationSuccess(position: GeolocationPosition) {
     const {latitude, longitude} = position.coords;
     this.myLocation = {latitude, longitude};
+    this.selectedLocation = {latitude, longitude};  // Set selected location to match my location
     this.locationFailure = false;
     this.setNearbyBeatdowns();
   }
@@ -209,7 +211,8 @@ export class NearbyPage {
       }
     }
     this.locationFailure = true;
-    this.myLocation = undefined;
+    this.myLocation = null;
+    this.selectedLocation = null;
     this.showRegionModal = true;
   }
 
@@ -217,8 +220,8 @@ export class NearbyPage {
    * Filter down to the nearby beatdowns and set the data in the app
    */
   setNearbyBeatdowns() {
-    // no-op if we don't have beatdowns
-    if (!this.myLocation || !this.allBDs) return;
+    // no-op if we don't have beatdowns or a selected location
+    if (!this.selectedLocation || !this.allBDs) return;
 
     // don't try to build up the days with too small of a filter text for
     // performance reasons
@@ -236,8 +239,8 @@ export class NearbyPage {
       const dist = this.distance(
           bd.lat,
           bd.long,
-          this.myLocation.latitude,
-          this.myLocation.longitude,
+          this.selectedLocation.latitude,
+          this.selectedLocation.longitude,
       );
 
       // Only set milesFromMe if we're using my location
@@ -537,7 +540,7 @@ export class NearbyPage {
   selectRegion(region: RegionCity) {
     this.selectedRegion = region;
     this.useMyLocation = false;
-    this.myLocation = {
+    this.selectedLocation = {
       latitude: region.lat,
       longitude: region.long
     };
@@ -596,7 +599,7 @@ export class NearbyPage {
    * Find cities near the IP-based location
    */
   private findNearbyCities() {
-    if (!this.myLocation || !this.regions.length) return;
+    if (!this.selectedLocation || !this.regions.length) return;
 
     // Calculate distances and sort
     const citiesWithDistance = this.regions.map(region => ({
@@ -604,8 +607,8 @@ export class NearbyPage {
       distance: this.distance(
         region.lat,
         region.long,
-        this.myLocation.latitude,
-        this.myLocation.longitude
+        this.selectedLocation.latitude,
+        this.selectedLocation.longitude
       )
     }));
 
