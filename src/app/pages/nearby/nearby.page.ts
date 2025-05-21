@@ -99,7 +99,6 @@ export class NearbyPage {
     this.loadFromCache();
     this.setMyLocation();
     this.loadBeatdowns();
-    this.fetchIPLocation();
   }
 
   get filterTooShort(): boolean {
@@ -213,6 +212,7 @@ export class NearbyPage {
     this.locationFailure = true;
     this.myLocation = null;
     this.selectedLocation = null;
+    this.fetchIPLocation();
   }
 
   /**
