@@ -165,6 +165,8 @@ interface Beatdown {
   lat: number;          // Latitude
   long: number;         // Longitude
   milesFromMe: number;  // Calculated distance from user
+  eventId: number;      // ID of the event from the API
+  locationId: number;   // ID of the location from the API
 }
 ```
 
@@ -195,6 +197,8 @@ The backend service should:
    - `address`: from location's `fullAddress`
    - `lat`: from location's `lat`
    - `long`: from location's `lon`
+   - `eventId`: from event's `id`
+   - `locationId`: from location's `id`
 4. Store each `Beatdown` object in Firestore, using the location and event data as the document fields
 
 #### Frontend Responsibilities
@@ -273,5 +277,7 @@ interface Beatdown {
   address: string;       // Full address
   lat: number;          // Latitude
   long: number;         // Longitude
+  eventId: number;      // ID of the event from the API
+  locationId: number;   // ID of the location from the API
 }
 ``` 
