@@ -99,11 +99,6 @@ interface Beatdown {
   eventId: number;
 }
 
-interface BeatdownWithEventId {
-  beatdown: Beatdown;
-  eventId: number;
-}
-
 admin.initializeApp();
 
 /**
@@ -167,11 +162,21 @@ function generateBeatdownId(beatdown: Beatdown): string {
 /**
  * Updates or creates a beatdown document in Firestore
  */
-async function updateBeatdown(db: admin.firestore.Firestore, beatdown: Beatdown): Promise<void> {
+async function updateBeatdown(db: admin.firestore.Firestore, beatdown: Beatdown, existingBeatdown: Beatdown): Promise<void> {
   const docId = generateBeatdownId(beatdown);
+  const existingDocId = generateBeatdownId(existingBeatdown);
+
+  // If the existing beatdown doesn't have the same docId, we need to delete the existing document
+  if (existingDocId !== docId) {
+    await db.collection('beatdowns')
+      .doc(existingDocId)
+      .delete();
+  }
+
+  // Save this beatdown
   await db.collection('beatdowns')
-    .doc(docId)
-    .set(beatdown, { merge: true });
+      .doc(docId)
+      .set(beatdown, { merge: true });
 }
 
 const BATCH_SIZE = 500; // Firestore batch write limit
@@ -214,6 +219,10 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
     });
     const toSaveDocIds = new Set(beatdownsToSave.map(b => b.docId));
 
+    // Debug logging
+    console.log('Existing doc IDs:', Array.from(existingDocs.keys()));
+    console.log('To-save doc IDs:', Array.from(toSaveDocIds));
+
     // Upsert all beatdowns from the API response
     const saveBatches = chunkArray(beatdownsToSave, BATCH_SIZE);
     for (const batch of saveBatches) {
@@ -229,6 +238,7 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
     const docsToDelete = Array.from(existingDocs.entries())
       .filter(([docId]) => !toSaveDocIds.has(docId))
       .map(([, doc]) => doc);
+    console.log('Docs to delete:', docsToDelete.map(doc => doc.id));
     const deleteBatches = chunkArray(docsToDelete, BATCH_SIZE);
     for (const batch of deleteBatches) {
       const writeBatch = db.batch();
@@ -269,7 +279,7 @@ async function updateEventBeatdown(db: admin.firestore.Firestore, eventId: numbe
 
     if (event) {
       const beatdown = transformToBeatdown(location, event);
-      await updateBeatdown(db, beatdown);
+      await updateBeatdown(db, beatdown, existingBeatdown);
     } else {
       // Event no longer exists, delete the beatdown
       await deleteBeatdownsByEvent(db, eventId);
