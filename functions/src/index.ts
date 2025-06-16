@@ -194,60 +194,48 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
   try {
     const locationData = await fetchLocationData(locationId);
     const location = locationData.result.data.json.location;
-    
+
     // Get all existing beatdowns for this location
     const snapshot = await db.collection('beatdowns')
       .where('locationId', '==', locationId)
       .get();
 
-    // Create a map of existing event IDs
-    const existingEventIds = new Set<number>();
+    // Build a map of existing docs by docId
+    const existingDocs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
     snapshot.docs.forEach(doc => {
-      const beatdown = doc.data() as Beatdown;
-      existingEventIds.add(beatdown.eventId);
+      existingDocs.set(doc.id, doc);
     });
 
-    // Process each event in the location
-    const beatdowns: BeatdownWithEventId[] = location.events.map((event: Event) => ({
-      beatdown: transformToBeatdown(location, event),
-      eventId: event.id
-    }));
+    // Build the list of beatdowns to save and their docIds
+    const beatdownsToSave: { docId: string, beatdown: Beatdown }[] = location.events.map((event: Event) => {
+      const beatdown = transformToBeatdown(location, event);
+      const docId = generateBeatdownId(beatdown);
+      return { docId, beatdown };
+    });
+    const toSaveDocIds = new Set(beatdownsToSave.map(b => b.docId));
 
-    // Split into batches to handle Firestore limits
-    const batches = chunkArray(beatdowns, BATCH_SIZE);
-    
-    for (const batch of batches) {
+    // Upsert all beatdowns from the API response
+    const saveBatches = chunkArray(beatdownsToSave, BATCH_SIZE);
+    for (const batch of saveBatches) {
       const writeBatch = db.batch();
-      
-      for (const { beatdown, eventId } of batch) {
-        const docId = generateBeatdownId(beatdown);
+      for (const { docId, beatdown } of batch) {
         const docRef = db.collection('beatdowns').doc(docId);
-        writeBatch.set(docRef, beatdown);
-        existingEventIds.delete(eventId);
+        writeBatch.set(docRef, beatdown, { merge: true });
       }
-
       await writeBatch.commit();
     }
 
-    // Delete any beatdowns for events that no longer exist
-    const eventIdsToDelete = Array.from(existingEventIds);
-    const deleteBatches = chunkArray(eventIdsToDelete, BATCH_SIZE);
-
+    // Delete any existing docs not in toSave
+    const docsToDelete = Array.from(existingDocs.entries())
+      .filter(([docId]) => !toSaveDocIds.has(docId))
+      .map(([, doc]) => doc);
+    const deleteBatches = chunkArray(docsToDelete, BATCH_SIZE);
     for (const batch of deleteBatches) {
-      const deleteBatch = db.batch();
-      
-      for (const eventId of batch) {
-        const snapshot = await db.collection('beatdowns')
-          .where('locationId', '==', locationId)
-          .where('eventId', '==', eventId)
-          .get();
-        
-        snapshot.docs.forEach(doc => {
-          deleteBatch.delete(doc.ref);
-        });
+      const writeBatch = db.batch();
+      for (const doc of batch) {
+        writeBatch.delete(doc.ref);
       }
-
-      await deleteBatch.commit();
+      await writeBatch.commit();
     }
   } catch (error) {
     console.error(`Error updating location ${locationId}:`, error);
