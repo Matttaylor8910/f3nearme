@@ -3,6 +3,7 @@ import {NgModule} from '@angular/core';
 import {ScreenTrackingService, UserTrackingService} from '@angular/fire/analytics';
 import {AngularFireModule} from '@angular/fire/compat';
 import {AngularFireAnalyticsModule} from '@angular/fire/compat/analytics';
+import {AngularFireFunctionsModule} from '@angular/fire/compat/functions';
 import {BrowserModule} from '@angular/platform-browser';
 import {RouteReuseStrategy} from '@angular/router';
 import {IonicModule, IonicRouteStrategy} from '@ionic/angular';
@@ -22,6 +23,7 @@ import {AppComponent} from './app.component';
     HttpClientModule,
     AngularFireModule.initializeApp(environment.firebase),
     AngularFireAnalyticsModule,
+    AngularFireFunctionsModule,
   ],
   providers: [
     ScreenTrackingService,

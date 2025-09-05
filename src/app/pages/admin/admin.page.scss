@@ -1,0 +1,52 @@
+.results {
+  background: var(--ion-color-light);
+  border: 1px solid var(--ion-color-medium);
+  border-radius: 8px;
+  padding: 12px;
+  
+  pre {
+    margin: 0;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+}
+
+ion-card {
+  margin-bottom: 16px;
+}
+
+.error-text {
+  color: var(--ion-color-danger);
+  font-weight: 500;
+}
+
+.current-sync {
+  text-align: center;
+  margin: 8px 0;
+}
+
+.sync-results {
+  margin: 8px 0;
+}
+
+.small-text {
+  font-size: 10px;
+}
+
+details {
+  cursor: pointer;
+  
+  summary {
+    padding: 8px;
+    background: var(--ion-color-light);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    
+    &:hover {
+      background: var(--ion-color-medium);
+    }
+  }
+}

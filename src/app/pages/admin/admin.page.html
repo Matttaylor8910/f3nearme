@@ -1,0 +1,180 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>F3 Admin Dashboard</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  <!-- Webhook Re-run Section -->
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>🔄 Re-run Webhooks</ion-card-title>
+      <ion-card-subtitle>Re-process webhook notifications after a specific date</ion-card-subtitle>
+    </ion-card-header>
+    
+    <ion-card-content>
+      <ion-item>
+        <ion-label position="stacked">After Date (UTC)</ion-label>
+        <ion-datetime 
+          [(ngModel)]="webhookAfterDate"
+          presentation="date-time"
+          display-format="YYYY-MM-DD HH:mm"
+          picker-format="YYYY-MM-DD HH:mm">
+        </ion-datetime>
+      </ion-item>
+      
+      <ion-item>
+        <ion-checkbox [(ngModel)]="webhookDryRun"></ion-checkbox>
+        <ion-label class="ion-margin-start">Dry Run</ion-label>
+      </ion-item>
+      
+      <ion-button 
+        (click)="rerunWebhooks()" 
+        [disabled]="webhookLoading"
+        expand="block" 
+        class="ion-margin-top">
+        <ion-spinner name="crescent" *ngIf="webhookLoading"></ion-spinner>
+        <span *ngIf="!webhookLoading">Re-run Webhooks</span>
+      </ion-button>
+      
+      <ion-button 
+        (click)="setRecentDate(1)"
+        fill="outline" 
+        size="small"
+        class="ion-margin-top">
+        Last 24 Hours
+      </ion-button>
+      
+      <div *ngIf="webhookResults" class="results ion-margin-top">
+        <ion-text [color]="webhookError ? 'danger' : 'success'">
+          <pre>{{ webhookResults | json }}</pre>
+        </ion-text>
+      </div>
+    </ion-card-content>
+  </ion-card>
+
+  <!-- Specific Location Refresh Section -->
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>📍 Refresh Specific Locations</ion-card-title>
+      <ion-card-subtitle>Force refresh specific location IDs from the F3 API</ion-card-subtitle>
+    </ion-card-header>
+    
+    <ion-card-content>
+      <ion-item>
+        <ion-label position="stacked">Location IDs (comma-separated, required)</ion-label>
+        <ion-textarea 
+          [(ngModel)]="locationIds"
+          placeholder="Enter location IDs separated by commas (e.g., 123, 456, 789)"
+          rows="3">
+        </ion-textarea>
+      </ion-item>
+      
+      <ion-item>
+        <ion-checkbox [(ngModel)]="locationDryRun"></ion-checkbox>
+        <ion-label class="ion-margin-start">Dry Run</ion-label>
+      </ion-item>
+      
+      <ion-button 
+        (click)="refreshSpecificLocations()" 
+        [disabled]="locationLoading || !locationIds?.trim()"
+        expand="block" 
+        class="ion-margin-top">
+        <ion-spinner name="crescent" *ngIf="locationLoading"></ion-spinner>
+        <span *ngIf="!locationLoading">Refresh Specific Locations</span>
+      </ion-button>
+      
+      <div *ngIf="locationResults" class="results ion-margin-top">
+        <ion-text [color]="locationError ? 'danger' : 'success'">
+          <pre>{{ locationResults | json }}</pre>
+        </ion-text>
+      </div>
+    </ion-card-content>
+  </ion-card>
+
+  <!-- Refresh All Locations Section -->
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>🌍 Refresh All Locations</ion-card-title>
+      <ion-card-subtitle>Sync all F3 locations from the map API</ion-card-subtitle>
+    </ion-card-header>
+    
+    <ion-card-content>
+      <!-- Step 1: Get location count -->
+      <div *ngIf="!allLocationIds">
+        <ion-button 
+          (click)="getAllLocationIds()" 
+          [disabled]="gettingLocationIds"
+          expand="block">
+          <ion-spinner name="crescent" *ngIf="gettingLocationIds"></ion-spinner>
+          <span *ngIf="!gettingLocationIds">Get All Location IDs</span>
+        </ion-button>
+      </div>
+      
+      <!-- Step 2: Confirm sync -->
+      <div *ngIf="allLocationIds && !syncStarted">
+        <ion-item>
+          <ion-label>
+            <h2>{{ allLocationIds.length }} locations found</h2>
+            <p>Ready to sync all locations from the F3 map API</p>
+          </ion-label>
+        </ion-item>
+        
+        <ion-button 
+          (click)="startBulkSync()" 
+          color="warning"
+          expand="block"
+          class="ion-margin-top">
+          Start Sync for {{ allLocationIds.length }} Locations
+        </ion-button>
+        
+        <ion-button 
+          (click)="resetBulkSync()"
+          fill="outline" 
+          size="small"
+          class="ion-margin-top">
+          Cancel
+        </ion-button>
+      </div>
+      
+      <!-- Step 3: Progress -->
+      <div *ngIf="syncStarted">
+        <ion-item>
+          <ion-label>
+            <h3>Syncing Locations</h3>
+            <p>{{ syncProgress.completed }} of {{ syncProgress.total }} completed</p>
+            <p *ngIf="syncProgress.errors > 0" class="error-text">{{ syncProgress.errors }} errors</p>
+          </ion-label>
+        </ion-item>
+        
+        <ion-progress-bar 
+          [value]="syncProgress.completed / syncProgress.total"
+          class="ion-margin-vertical">
+        </ion-progress-bar>
+        
+        <ion-button 
+          *ngIf="syncProgress.completed === syncProgress.total"
+          (click)="resetBulkSync()"
+          color="success"
+          expand="block"
+          class="ion-margin-top">
+          Sync Complete - {{ syncProgress.completed }} locations processed
+        </ion-button>
+        
+        <div *ngIf="bulkSyncResults && bulkSyncResults.length > 0" class="results ion-margin-top">
+          <ion-text color="medium">
+            <h4>Sync Results:</h4>
+            <div class="sync-results">
+              <ion-text color="success">✅ {{ successfulSyncs }} successful</ion-text><br>
+              <ion-text color="danger">❌ {{ failedSyncs }} failed</ion-text>
+            </div>
+            <details class="ion-margin-top">
+              <summary>View detailed results</summary>
+              <pre class="small-text">{{ bulkSyncResults | json }}</pre>
+            </details>
+          </ion-text>
+        </div>
+      </div>
+    </ion-card-content>
+  </ion-card>
+</ion-content>

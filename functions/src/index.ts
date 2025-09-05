@@ -452,7 +452,23 @@ async function deleteBeatdownsByEvent(db: admin.firestore.Firestore, eventId: nu
 /**
  * Creates a webhook log entry
  */
-function createWebhookLog(webhookData: MapWebhook): any {
+interface WebhookLog {
+  action: 'map.updated'|'map.deleted';
+  channel: string;
+  data: {
+    eventId?: number;
+    locationId?: number;
+    orgId: number;
+  };
+  receivedAt: admin.firestore.FieldValue | string | null;
+  timestamp: string;
+  version: string;
+  actionedAt: admin.firestore.FieldValue | null;
+  rerunAt?: admin.firestore.FieldValue;
+  error?: any;
+}
+
+function createWebhookLog(webhookData: MapWebhook): WebhookLog {
   return {
     ...webhookData,
     receivedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -460,9 +476,314 @@ function createWebhookLog(webhookData: MapWebhook): any {
   };
 }
 
+/**
+ * Admin callable function to get all location IDs from the F3 map
+ */
+export const adminGetAllLocationIds = functions.https.onCall(async (data) => {
+  const startTime = Date.now();
+  console.log(`[ADMIN] Get all location IDs callable request`);
+
+  try {
+    console.log(`[ADMIN] Fetching all location data from F3 map API`);
+    
+    const url = 'https://map.f3nation.com/api/trpc/location.getMapEventAndLocationData';
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new functions.https.HttpsError('internal', `HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const apiData = await response.json();
+    
+    if (!apiData?.result?.data?.json || !Array.isArray(apiData.result.data.json)) {
+      throw new functions.https.HttpsError('internal', 'Invalid response format from F3 API');
+    }
+    
+    // Extract unique location IDs - first element of each location array
+    const uniqueLocationIds = new Set<number>();
+    
+    apiData.result.data.json.forEach((locationArray: any[]) => {
+      if (Array.isArray(locationArray) && locationArray.length > 0) {
+        const locationId = locationArray[0];
+        if (typeof locationId === 'number') {
+          uniqueLocationIds.add(locationId);
+        }
+      }
+    });
+    
+    const locationIds = Array.from(uniqueLocationIds).sort((a, b) => a - b);
+    const duration = Date.now() - startTime;
+    
+    console.log(`[ADMIN] Found ${locationIds.length} unique location IDs in ${duration}ms`);
+    
+    return {
+      message: 'Successfully retrieved location IDs',
+      count: locationIds.length,
+      locationIds,
+      duration
+    };
+    
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[ADMIN] Error getting location IDs after ${duration}ms:`, error);
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError('internal', 'Failed to get location IDs');
+  }
+});
+
+/**
+ * Admin callable function to update a single location by locationId
+ */
+export const adminUpdateSingleLocation = functions.https.onCall(async (data) => {
+  const startTime = Date.now();
+  console.log(`[ADMIN] Update single location callable request`);
+
+  try {
+    const { locationId } = data;
+    
+    if (!locationId || typeof locationId !== 'number') {
+      throw new functions.https.HttpsError('invalid-argument', 'locationId is required and must be a number');
+    }
+
+    console.log(`[ADMIN] Updating single location: ${locationId}`);
+    
+    const db = admin.firestore();
+    await updateLocationBeatdowns(db, locationId);
+    
+    const duration = Date.now() - startTime;
+    console.log(`[ADMIN] Successfully updated location ${locationId} in ${duration}ms`);
+    
+    return {
+      message: 'Location updated successfully',
+      locationId,
+      duration
+    };
+    
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[ADMIN] Error updating single location after ${duration}ms:`, error);
+    
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError('internal', error instanceof Error ? error.message : 'Failed to update location');
+  }
+});
+
+/**
+ * Admin callable function to re-run webhooks after a specific date
+ */
+export const adminRerunWebhooks = functions.https.onCall(async (data) => {
+  const startTime = Date.now();
+  console.log(`[ADMIN] Re-run webhooks callable request`);
+
+  try {
+    const { afterDate, dryRun = false } = data;
+    
+    if (!afterDate) {
+      throw new functions.https.HttpsError('invalid-argument', 'afterDate is required (ISO string)');
+    }
+
+    const afterTimestamp = new Date(afterDate);
+    console.log(`[ADMIN] Re-running webhooks after: ${afterTimestamp.toISOString()}, dryRun: ${dryRun}`);
+
+    const db = admin.firestore();
+    const webhookLogs = await db.collection('webhookLogs')
+      .where('timestamp', '>=', afterTimestamp.toISOString())
+      .where('channel', '==', 'prod')
+      .orderBy('timestamp', 'desc')
+      .get();
+
+    console.log(`[ADMIN] Found ${webhookLogs.docs.length} webhook logs to process`);
+    
+    const results = [];
+    let processed = 0;
+    let errors = 0;
+
+    for (const doc of webhookLogs.docs) {
+      const webhookData = doc.data() as WebhookLog;
+      
+      // Skip if already actioned successfully (has actionedAt and no error)
+      if (webhookData.actionedAt && !webhookData.error) {
+        continue;
+      }
+
+      console.log(`[ADMIN] Processing webhook ${doc.id}: action=${webhookData.action}, locationId=${webhookData.data?.locationId}, eventId=${webhookData.data?.eventId}`);
+      
+      if (!dryRun) {
+        try {
+          const { locationId, eventId } = webhookData.data;
+          
+          if (webhookData.action === 'map.updated') {
+            if (locationId) {
+              await updateLocationBeatdowns(db, locationId);
+            } else if (eventId) {
+              await updateEventBeatdown(db, eventId);
+            }
+          } else if (webhookData.action === 'map.deleted') {
+            if (locationId) {
+              await deleteBeatdownsByLocation(db, locationId);
+            } else if (eventId) {
+              await deleteBeatdownsByEvent(db, eventId);
+            }
+          }
+          
+          // Update the webhook log to mark as actioned
+          await doc.ref.update({
+            actionedAt: admin.firestore.FieldValue.serverTimestamp(),
+            rerunAt: admin.firestore.FieldValue.serverTimestamp(),
+            error: admin.firestore.FieldValue.delete()
+          });
+          
+          processed++;
+        } catch (error) {
+          console.error(`[ADMIN] Error processing webhook ${doc.id}:`, error);
+          errors++;
+          
+          // Update with error info
+          await doc.ref.update({
+            rerunAt: admin.firestore.FieldValue.serverTimestamp(),
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+              rerunError: true
+            }
+          });
+        }
+      }
+      
+      results.push({
+        id: doc.id,
+        action: webhookData.action,
+        locationId: webhookData.data?.locationId,
+        eventId: webhookData.data?.eventId,
+        timestamp: webhookData.timestamp,
+        processed: !dryRun
+      });
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(`[ADMIN] Completed webhook rerun in ${duration}ms: ${processed} processed, ${errors} errors`);
+    
+    return {
+      message: `Webhook rerun ${dryRun ? 'simulation' : 'execution'} completed`,
+      afterDate: afterTimestamp.toISOString(),
+      totalFound: webhookLogs.docs.length,
+      candidatesForRerun: results.length,
+      processed,
+      errors,
+      duration,
+      dryRun,
+      results
+    };
+    
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[ADMIN] Error in webhook rerun after ${duration}ms:`, error);
+    
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError('internal', error instanceof Error ? error.message : 'Failed to rerun webhooks');
+  }
+});
+
+/**
+ * Admin callable function to refresh specific locations
+ */
+export const adminRefreshSpecificLocations = functions.https.onCall(async (data) => {
+  const startTime = Date.now();
+  console.log(`[ADMIN] Refresh specific locations callable request`);
+
+  try {
+    const { locationIds, dryRun = false } = data;
+    
+    if (!locationIds || !Array.isArray(locationIds) || locationIds.length === 0) {
+      throw new functions.https.HttpsError('invalid-argument', 'locationIds array is required and must not be empty');
+    }
+
+    const targetLocationIds: number[] = locationIds;
+    console.log(`[ADMIN] Refreshing ${targetLocationIds.length} specific locations, dryRun: ${dryRun}`);
+    
+    if (dryRun) {
+      return {
+        message: 'Location refresh simulation completed',
+        locationIds: targetLocationIds,
+        count: targetLocationIds.length,
+        dryRun: true
+      };
+    }
+
+    const db = admin.firestore();
+    const results = [];
+    let processed = 0;
+    let errors = 0;
+
+    // Process locations in parallel batches to avoid overwhelming the API
+    const BATCH_SIZE = 10;
+    const batches = [];
+    for (let i = 0; i < targetLocationIds.length; i += BATCH_SIZE) {
+      batches.push(targetLocationIds.slice(i, i + BATCH_SIZE));
+    }
+
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      console.log(`[ADMIN] Processing batch ${batchIndex + 1}/${batches.length} with ${batch.length} locations`);
+      
+      const batchPromises = batch.map(async (locationId) => {
+        try {
+          console.log(`[ADMIN] Refreshing location ${locationId}`);
+          await updateLocationBeatdowns(db, locationId);
+          processed++;
+          return { locationId, success: true };
+        } catch (error) {
+          console.error(`[ADMIN] Error refreshing location ${locationId}:`, error);
+          errors++;
+          return { 
+            locationId, 
+            success: false, 
+            error: error instanceof Error ? error.message : String(error) 
+          };
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
+      
+      // Small delay between batches to be nice to the API
+      if (batchIndex < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(`[ADMIN] Completed location refresh in ${duration}ms: ${processed} processed, ${errors} errors`);
+    
+    return {
+      message: 'Location refresh completed',
+      totalLocations: targetLocationIds.length,
+      processed,
+      errors,
+      duration,
+      results
+    };
+    
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[ADMIN] Error in location refresh after ${duration}ms:`, error);
+    
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError('internal', error instanceof Error ? error.message : 'Failed to refresh locations');
+  }
+});
+
+
 export const mapWebhook = functions.https.onRequest(async (req: Request, res: Response) => {
   const webhookStartTime = Date.now();
-  const requestId = Math.random().toString(36).substr(2, 9);
+  const requestId = Math.random().toString(36).substring(2, 11);
   console.log(`[WEBHOOK:${requestId}] Received ${req.method} request from ${req.ip || 'unknown'} at ${new Date().toISOString()}`);
   
   // Only allow POST requests
