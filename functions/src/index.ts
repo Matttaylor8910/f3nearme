@@ -121,12 +121,38 @@ function formatTime(militaryTime: string | null | undefined): string {
  * Fetches location data from the F3 API
  */
 async function fetchLocationData(locationId: number): Promise<any> {
-  const response = await fetch(
-    `https://map.f3nation.com/api/trpc/location.getLocationWorkoutData?input=${encodeURIComponent(
+  const startTime = Date.now();
+  console.log(`[API] Starting fetch for locationId: ${locationId}`);
+  
+  try {
+    const url = `https://map.f3nation.com/api/trpc/location.getLocationWorkoutData?input=${encodeURIComponent(
       JSON.stringify({ json: { locationId } })
-    )}`
-  );
-  return response.json();
+    )}`;
+    console.log(`[API] Fetching URL: ${url}`);
+    
+    const response = await fetch(url);
+    const duration = Date.now() - startTime;
+    
+    console.log(`[API] Response received for locationId ${locationId}: status=${response.status}, duration=${duration}ms`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log(`[API] Successfully parsed JSON for locationId ${locationId}, has location data: ${!!data?.result?.data?.json?.location}`);
+    
+    if (data?.result?.data?.json?.location) {
+      const location = data.result.data.json.location;
+      console.log(`[API] Location ${locationId} data: name="${location.name}", events=${location.events?.length || 0}, active=${location.isActive}`);
+    }
+    
+    return data;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[API] Error fetching locationId ${locationId} after ${duration}ms:`, error);
+    throw error;
+  }
 }
 
 /**
@@ -196,14 +222,25 @@ function chunkArray<T>(array: T[], size: number): T[][] {
  * Updates all beatdowns for a specific location
  */
 async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId: number): Promise<void> {
+  const startTime = Date.now();
+  console.log(`[DB] Starting updateLocationBeatdowns for locationId: ${locationId}`);
+  
   try {
     const locationData = await fetchLocationData(locationId);
     const location = locationData.result.data.json.location;
 
+    if (!location) {
+      console.error(`[DB] No location data returned from API for locationId: ${locationId}`);
+      return;
+    }
+
     // Get all existing beatdowns for this location
+    console.log(`[DB] Querying existing beatdowns for locationId: ${locationId}`);
     const snapshot = await db.collection('beatdowns')
       .where('locationId', '==', locationId)
       .get();
+    
+    console.log(`[DB] Found ${snapshot.docs.length} existing beatdowns for locationId: ${locationId}`);
 
     // Build a map of existing docs by docId
     const existingDocs = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
@@ -212,43 +249,62 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
     });
 
     // Build the list of beatdowns to save and their docIds
+    console.log(`[DB] Processing ${location.events?.length || 0} events from API for locationId: ${locationId}`);
     const beatdownsToSave: { docId: string, beatdown: Beatdown }[] = location.events.map((event: Event) => {
       const beatdown = transformToBeatdown(location, event);
       const docId = generateBeatdownId(beatdown);
+      console.log(`[DB] Transformed event ${event.id} ("${event.name}") to beatdown with docId: ${docId}`);
       return { docId, beatdown };
     });
     const toSaveDocIds = new Set(beatdownsToSave.map(b => b.docId));
 
     // Debug logging
-    console.log('Existing doc IDs:', Array.from(existingDocs.keys()));
-    console.log('To-save doc IDs:', Array.from(toSaveDocIds));
+    console.log(`[DB] Existing doc IDs for locationId ${locationId}:`, Array.from(existingDocs.keys()));
+    console.log(`[DB] To-save doc IDs for locationId ${locationId}:`, Array.from(toSaveDocIds));
 
     // Upsert all beatdowns from the API response
     const saveBatches = chunkArray(beatdownsToSave, BATCH_SIZE);
-    for (const batch of saveBatches) {
+    console.log(`[DB] Saving ${beatdownsToSave.length} beatdowns in ${saveBatches.length} batches for locationId: ${locationId}`);
+    
+    for (let i = 0; i < saveBatches.length; i++) {
+      const batch = saveBatches[i];
+      console.log(`[DB] Processing save batch ${i + 1}/${saveBatches.length} with ${batch.length} items`);
       const writeBatch = db.batch();
       for (const { docId, beatdown } of batch) {
         const docRef = db.collection('beatdowns').doc(docId);
         writeBatch.set(docRef, beatdown, { merge: true });
       }
       await writeBatch.commit();
+      console.log(`[DB] Committed save batch ${i + 1}/${saveBatches.length}`);
     }
 
     // Delete any existing docs not in toSave
     const docsToDelete = Array.from(existingDocs.entries())
       .filter(([docId]) => !toSaveDocIds.has(docId))
       .map(([, doc]) => doc);
-    console.log('Docs to delete:', docsToDelete.map(doc => doc.id));
+    console.log(`[DB] Docs to delete for locationId ${locationId}:`, docsToDelete.map(doc => doc.id));
+    
     const deleteBatches = chunkArray(docsToDelete, BATCH_SIZE);
-    for (const batch of deleteBatches) {
-      const writeBatch = db.batch();
-      for (const doc of batch) {
-        writeBatch.delete(doc.ref);
+    if (deleteBatches.length > 0) {
+      console.log(`[DB] Deleting ${docsToDelete.length} beatdowns in ${deleteBatches.length} batches for locationId: ${locationId}`);
+      
+      for (let i = 0; i < deleteBatches.length; i++) {
+        const batch = deleteBatches[i];
+        console.log(`[DB] Processing delete batch ${i + 1}/${deleteBatches.length} with ${batch.length} items`);
+        const writeBatch = db.batch();
+        for (const doc of batch) {
+          writeBatch.delete(doc.ref);
+        }
+        await writeBatch.commit();
+        console.log(`[DB] Committed delete batch ${i + 1}/${deleteBatches.length}`);
       }
-      await writeBatch.commit();
     }
+    
+    const duration = Date.now() - startTime;
+    console.log(`[DB] Successfully completed updateLocationBeatdowns for locationId ${locationId} in ${duration}ms: saved=${beatdownsToSave.length}, deleted=${docsToDelete.length}`);
   } catch (error) {
-    console.error(`Error updating location ${locationId}:`, error);
+    const duration = Date.now() - startTime;
+    console.error(`[DB] Error updating location ${locationId} after ${duration}ms:`, error);
     throw error;
   }
 }
@@ -257,35 +313,52 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
  * Updates a beatdown for a specific event
  */
 async function updateEventBeatdown(db: admin.firestore.Firestore, eventId: number): Promise<void> {
+  const startTime = Date.now();
+  console.log(`[DB] Starting updateEventBeatdown for eventId: ${eventId}`);
+  
   try {
     // First find the existing beatdown to get its locationId
+    console.log(`[DB] Querying existing beatdown for eventId: ${eventId}`);
     const snapshot = await db.collection('beatdowns')
       .where('eventId', '==', eventId)
       .limit(1)
       .get();
 
     if (snapshot.empty) {
-      console.log(`No existing beatdown found for eventId: ${eventId}`);
+      console.log(`[DB] No existing beatdown found for eventId: ${eventId}`);
       return;
     }
 
     const existingBeatdown = snapshot.docs[0].data() as Beatdown;
+    console.log(`[DB] Found existing beatdown for eventId ${eventId}: locationId=${existingBeatdown.locationId}, docId=${snapshot.docs[0].id}`);
+    
     const locationData = await fetchLocationData(existingBeatdown.locationId);
     const location = locationData.result.data.json.location;
+    
+    if (!location) {
+      console.error(`[DB] No location data returned for locationId ${existingBeatdown.locationId} when updating eventId ${eventId}`);
+      return;
+    }
     
     const event = location.events.find(
       (e: Event) => e.id === eventId
     );
 
     if (event) {
+      console.log(`[DB] Found event ${eventId} ("${event.name}") in location data, updating beatdown`);
       const beatdown = transformToBeatdown(location, event);
       await updateBeatdown(db, beatdown, existingBeatdown);
+      const duration = Date.now() - startTime;
+      console.log(`[DB] Successfully updated beatdown for eventId ${eventId} in ${duration}ms`);
     } else {
-      // Event no longer exists, delete the beatdown
+      console.log(`[DB] Event ${eventId} no longer exists in location data, deleting beatdown`);
       await deleteBeatdownsByEvent(db, eventId);
+      const duration = Date.now() - startTime;
+      console.log(`[DB] Successfully deleted beatdown for eventId ${eventId} in ${duration}ms`);
     }
   } catch (error) {
-    console.error(`Error updating event ${eventId}:`, error);
+    const duration = Date.now() - startTime;
+    console.error(`[DB] Error updating event ${eventId} after ${duration}ms:`, error);
     throw error;
   }
 }
@@ -294,22 +367,41 @@ async function updateEventBeatdown(db: admin.firestore.Firestore, eventId: numbe
  * Deletes beatdowns by location ID
  */
 async function deleteBeatdownsByLocation(db: admin.firestore.Firestore, locationId: number): Promise<void> {
+  const startTime = Date.now();
+  console.log(`[DB] Starting deleteBeatdownsByLocation for locationId: ${locationId}`);
+  
   try {
     const snapshot = await db.collection('beatdowns')
       .where('locationId', '==', locationId)
       .get();
     
-    const batches = chunkArray(snapshot.docs, BATCH_SIZE);
+    console.log(`[DB] Found ${snapshot.docs.length} beatdowns to delete for locationId: ${locationId}`);
     
-    for (const batch of batches) {
+    if (snapshot.docs.length === 0) {
+      console.log(`[DB] No beatdowns found to delete for locationId: ${locationId}`);
+      return;
+    }
+    
+    const batches = chunkArray(snapshot.docs, BATCH_SIZE);
+    console.log(`[DB] Deleting ${snapshot.docs.length} beatdowns in ${batches.length} batches for locationId: ${locationId}`);
+    
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      console.log(`[DB] Processing delete batch ${i + 1}/${batches.length} with ${batch.length} items`);
       const writeBatch = db.batch();
       batch.forEach(doc => {
+        console.log(`[DB] Marking doc ${doc.id} for deletion`);
         writeBatch.delete(doc.ref);
       });
       await writeBatch.commit();
+      console.log(`[DB] Committed delete batch ${i + 1}/${batches.length}`);
     }
+    
+    const duration = Date.now() - startTime;
+    console.log(`[DB] Successfully deleted ${snapshot.docs.length} beatdowns for locationId ${locationId} in ${duration}ms`);
   } catch (error) {
-    console.error(`Error deleting location ${locationId}:`, error);
+    const duration = Date.now() - startTime;
+    console.error(`[DB] Error deleting location ${locationId} after ${duration}ms:`, error);
     throw error;
   }
 }
@@ -318,22 +410,41 @@ async function deleteBeatdownsByLocation(db: admin.firestore.Firestore, location
  * Deletes beatdowns by event ID
  */
 async function deleteBeatdownsByEvent(db: admin.firestore.Firestore, eventId: number): Promise<void> {
+  const startTime = Date.now();
+  console.log(`[DB] Starting deleteBeatdownsByEvent for eventId: ${eventId}`);
+  
   try {
     const snapshot = await db.collection('beatdowns')
       .where('eventId', '==', eventId)
       .get();
     
-    const batches = chunkArray(snapshot.docs, BATCH_SIZE);
+    console.log(`[DB] Found ${snapshot.docs.length} beatdowns to delete for eventId: ${eventId}`);
     
-    for (const batch of batches) {
+    if (snapshot.docs.length === 0) {
+      console.log(`[DB] No beatdowns found to delete for eventId: ${eventId}`);
+      return;
+    }
+    
+    const batches = chunkArray(snapshot.docs, BATCH_SIZE);
+    console.log(`[DB] Deleting ${snapshot.docs.length} beatdowns in ${batches.length} batches for eventId: ${eventId}`);
+    
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      console.log(`[DB] Processing delete batch ${i + 1}/${batches.length} with ${batch.length} items`);
       const writeBatch = db.batch();
       batch.forEach(doc => {
+        console.log(`[DB] Marking doc ${doc.id} for deletion`);
         writeBatch.delete(doc.ref);
       });
       await writeBatch.commit();
+      console.log(`[DB] Committed delete batch ${i + 1}/${batches.length}`);
     }
+    
+    const duration = Date.now() - startTime;
+    console.log(`[DB] Successfully deleted ${snapshot.docs.length} beatdowns for eventId ${eventId} in ${duration}ms`);
   } catch (error) {
-    console.error(`Error deleting event ${eventId}:`, error);
+    const duration = Date.now() - startTime;
+    console.error(`[DB] Error deleting event ${eventId} after ${duration}ms:`, error);
     throw error;
   }
 }
@@ -350,46 +461,126 @@ function createWebhookLog(webhookData: MapWebhook): any {
 }
 
 export const mapWebhook = functions.https.onRequest(async (req: Request, res: Response) => {
+  const webhookStartTime = Date.now();
+  const requestId = Math.random().toString(36).substr(2, 9);
+  console.log(`[WEBHOOK:${requestId}] Received ${req.method} request from ${req.ip || 'unknown'} at ${new Date().toISOString()}`);
+  
   // Only allow POST requests
   if (req.method !== 'POST') {
+    console.log(`[WEBHOOK:${requestId}] Rejected non-POST request: ${req.method}`);
     res.status(405).json({ error: 'Method not allowed' });
     return;
   }
 
   try {
     const webhookData = req.body as MapWebhook;
+    console.log(`[WEBHOOK:${requestId}] Webhook data:`, JSON.stringify({
+      action: webhookData.action,
+      channel: webhookData.channel,
+      locationId: webhookData.data?.locationId,
+      eventId: webhookData.data?.eventId,
+      orgId: webhookData.data?.orgId,
+      timestamp: webhookData.timestamp,
+      version: webhookData.version
+    }, null, 2));
+    
     const webhookLog = createWebhookLog(webhookData);
+    let actionTaken = false;
     
     // Only process prod channel webhooks
     if (webhookData.channel === 'prod') {
+      console.log(`[WEBHOOK:${requestId}] Processing prod channel webhook`);
       const db = admin.firestore();
       const { locationId, eventId } = webhookData.data;
       
       if (webhookData.action === 'map.updated') {
-        if (eventId) {
-          await updateEventBeatdown(db, eventId);
-        } else if (locationId) {
-          await updateLocationBeatdowns(db, locationId);
-        }
-        webhookLog.actionedAt = admin.firestore.FieldValue.serverTimestamp();
-      } else if (webhookData.action === 'map.deleted') {
+        console.log(`[WEBHOOK:${requestId}] Processing map.updated action`);
+        
         if (locationId) {
-          await deleteBeatdownsByLocation(db, locationId);
+          console.log(`[WEBHOOK:${requestId}] Updating location beatdowns: ${locationId}`);
+          await updateLocationBeatdowns(db, locationId);
+          actionTaken = true;
         } else if (eventId) {
-          await deleteBeatdownsByEvent(db, eventId);
+          console.log(`[WEBHOOK:${requestId}] Updating single event: ${eventId}`);
+          await updateEventBeatdown(db, eventId);
+          actionTaken = true;
+        } else {
+          console.warn(`[WEBHOOK:${requestId}] map.updated action received but no locationId or eventId provided`);
         }
-        webhookLog.actionedAt = admin.firestore.FieldValue.serverTimestamp();
+        
+      } else if (webhookData.action === 'map.deleted') {
+        console.log(`[WEBHOOK:${requestId}] Processing map.deleted action`);
+        
+        if (locationId) {
+          console.log(`[WEBHOOK:${requestId}] Deleting location beatdowns: ${locationId}`);
+          await deleteBeatdownsByLocation(db, locationId);
+          actionTaken = true;
+        } else if (eventId) {
+          console.log(`[WEBHOOK:${requestId}] Deleting event beatdowns: ${eventId}`);
+          await deleteBeatdownsByEvent(db, eventId);
+          actionTaken = true;
+        } else {
+          console.warn(`[WEBHOOK:${requestId}] map.deleted action received but no locationId or eventId provided`);
+        }
+      } else {
+        console.warn(`[WEBHOOK:${requestId}] Unknown action: ${webhookData.action}`);
       }
+      
+      if (actionTaken) {
+        webhookLog.actionedAt = admin.firestore.FieldValue.serverTimestamp();
+        console.log(`[WEBHOOK:${requestId}] Action completed successfully`);
+      }
+      
+    } else {
+      console.log(`[WEBHOOK:${requestId}] Ignoring non-prod channel: ${webhookData.channel}`);
     }
 
     // Store in Firestore
-    await admin.firestore()
+    console.log(`[WEBHOOK:${requestId}] Storing webhook log in Firestore`);
+    const logRef = await admin.firestore()
       .collection('webhookLogs')
       .add(webhookLog);
+    console.log(`[WEBHOOK:${requestId}] Webhook log stored with ID: ${logRef.id}`);
 
-    res.status(200).json({ message: 'Webhook received and processed successfully' });
+    const totalDuration = Date.now() - webhookStartTime;
+    console.log(`[WEBHOOK:${requestId}] Webhook processed successfully in ${totalDuration}ms (action taken: ${actionTaken})`);
+    
+    res.status(200).json({ 
+      message: 'Webhook received and processed successfully',
+      requestId,
+      duration: totalDuration,
+      actionTaken,
+      logId: logRef.id
+    });
+    
   } catch (error) {
-    console.error('Error processing webhook:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const totalDuration = Date.now() - webhookStartTime;
+    console.error(`[WEBHOOK:${requestId}] Error processing webhook after ${totalDuration}ms:`, error);
+    
+    // Try to log the error webhook
+    try {
+      const errorLog = {
+        ...req.body,
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+        actionedAt: null,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          duration: totalDuration
+        }
+      };
+      await admin.firestore()
+        .collection('webhookLogs')
+        .add(errorLog);
+      console.log(`[WEBHOOK:${requestId}] Error webhook logged to Firestore`);
+    } catch (logError) {
+      console.error(`[WEBHOOK:${requestId}] Failed to log error webhook:`, logError);
+    }
+    
+    res.status(500).json({ 
+      error: 'Internal server error',
+      requestId,
+      duration: totalDuration
+    });
   }
 });
