@@ -988,6 +988,21 @@
                         5: null,
                         6: null
                     }
+                },
+                {
+                    id: 4,
+                    name: 'Boise Foothills',
+                    lat: 43.6800,
+                    lng: -116.1500,
+                    times: {
+                        0: null,
+                        1: { name: 'Tower', start: '06:00', end: '06:45' },
+                        2: null,
+                        3: null,
+                        4: null,
+                        5: { name: 'Tower', start: '06:00', end: '06:45' },
+                        6: null
+                    }
                 }
             ],
 
@@ -1295,9 +1310,11 @@
                     document.getElementById('modalEndTime').value = time.end;
                     document.getElementById('modalDeleteBtn').style.display = 'inline-block';
                 } else {
-                    document.getElementById('modalAoName').value = '';
-                    document.getElementById('modalStartTime').value = '';
-                    document.getElementById('modalEndTime').value = '';
+                    // Smart defaults for new days
+                    const defaults = this.getSmartDefaults(location, dayIndex);
+                    document.getElementById('modalAoName').value = defaults.name;
+                    document.getElementById('modalStartTime').value = defaults.start;
+                    document.getElementById('modalEndTime').value = defaults.end;
                     document.getElementById('modalDeleteBtn').style.display = 'none';
                 }
 
@@ -1305,6 +1322,81 @@
                 setTimeout(() => {
                     document.getElementById('modalAoName').focus();
                 }, 250);
+            },
+
+            getSmartDefaults(location, dayIndex) {
+                // First, check if this location has other days with times
+                const existingTimes = Object.values(location.times).filter(t => t !== null);
+                
+                if (existingTimes.length > 0) {
+                    // Use existing times from this location
+                    return this.getDefaultsFromLocation(existingTimes);
+                } else {
+                    // New location - use regional defaults for this day
+                    return this.getRegionalDefaults(dayIndex);
+                }
+            },
+
+            getDefaultsFromLocation(existingTimes) {
+                // Check if all existing times have the same AO name
+                const names = existingTimes.map(t => t.name);
+                const uniqueNames = [...new Set(names)];
+                const defaultName = uniqueNames.length === 1 ? uniqueNames[0] : '';
+
+                // Use the most common start/end times
+                const startTimes = existingTimes.map(t => t.start);
+                const endTimes = existingTimes.map(t => t.end);
+                
+                const defaultStart = this.getMostCommon(startTimes);
+                const defaultEnd = this.getMostCommon(endTimes);
+
+                return {
+                    name: defaultName,
+                    start: defaultStart,
+                    end: defaultEnd
+                };
+            },
+
+            getRegionalDefaults(dayIndex) {
+                // Collect all times for this day across all locations
+                const dayTimes = [];
+                this.locations.forEach(loc => {
+                    if (loc.times[dayIndex]) {
+                        dayTimes.push(loc.times[dayIndex]);
+                    }
+                });
+
+                if (dayTimes.length === 0) {
+                    // No regional data, use F3 typical defaults
+                    return {
+                        name: '',
+                        start: '05:30',
+                        end: '06:15'
+                    };
+                }
+
+                // Use most common times from the region for this day
+                const startTimes = dayTimes.map(t => t.start);
+                const endTimes = dayTimes.map(t => t.end);
+
+                return {
+                    name: '', // Don't suggest AO names from other locations
+                    start: this.getMostCommon(startTimes),
+                    end: this.getMostCommon(endTimes)
+                };
+            },
+
+            getMostCommon(arr) {
+                if (arr.length === 0) return '';
+                
+                const frequency = {};
+                arr.forEach(item => {
+                    frequency[item] = (frequency[item] || 0) + 1;
+                });
+
+                return Object.keys(frequency).reduce((a, b) => 
+                    frequency[a] > frequency[b] ? a : b
+                );
             },
 
             saveModalDayTime() {
