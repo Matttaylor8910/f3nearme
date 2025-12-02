@@ -992,8 +992,8 @@
                 {
                     id: 4,
                     name: 'Boise Foothills',
-                    lat: 43.6800,
-                    lng: -116.1500,
+                    lat: 43.5800,
+                    lng: -116.2400,
                     times: {
                         0: null,
                         1: { name: 'Tower', start: '06:00', end: '06:45' },
@@ -1117,10 +1117,10 @@
             },
 
             initMap() {
-                this.map = L.map('map').setView([43.5400, -116.2600], 11);
+                this.map = L.map('map').setView([43.5700, -116.2700], 12);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap contributors',
-                    maxZoom: 19
+                    maxZoom: 20
                 }).addTo(this.map);
 
                 // Add click handler for adding new locations
