@@ -484,24 +484,18 @@
                 <h3 id="modalDayLabel">Edit Monday</h3>
             </div>
             <div class="modal-content">
-                <div class="checkbox-group">
-                    <input type="checkbox" id="modalEnableDay" onchange="app.toggleModalDay()">
-                    <label for="modalEnableDay">This day has a time</label>
+                <div class="form-group">
+                    <label>AO Name</label>
+                    <input type="text" id="modalAoName">
                 </div>
-                <div id="modalTimeInputs" style="display: none;">
+                <div class="form-row">
                     <div class="form-group">
-                        <label>AO Name</label>
-                        <input type="text" id="modalAoName">
+                        <label>Start Time</label>
+                        <input type="time" id="modalStartTime">
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Start Time</label>
-                            <input type="time" id="modalStartTime">
-                        </div>
-                        <div class="form-group">
-                            <label>End Time</label>
-                            <input type="time" id="modalEndTime">
-                        </div>
+                    <div class="form-group">
+                        <label>End Time</label>
+                        <input type="time" id="modalEndTime">
                     </div>
                 </div>
             </div>
@@ -706,49 +700,43 @@
                 const location = this.currentLocation;
                 const time = location.times[dayIndex];
 
-                document.getElementById('modalDayLabel').textContent = `Edit ${DAYS[dayIndex]}`;
+                document.getElementById('modalDayLabel').textContent = `${time ? 'Edit' : 'Add'} ${DAYS[dayIndex]}`;
                 document.getElementById('dayEditModal').classList.add('active');
 
                 if (time) {
-                    document.getElementById('modalEnableDay').checked = true;
                     document.getElementById('modalAoName').value = time.name;
                     document.getElementById('modalStartTime').value = time.start;
                     document.getElementById('modalEndTime').value = time.end;
-                    document.getElementById('modalTimeInputs').style.display = 'block';
                     document.getElementById('modalDeleteBtn').style.display = 'inline-block';
                 } else {
-                    document.getElementById('modalEnableDay').checked = false;
                     document.getElementById('modalAoName').value = '';
                     document.getElementById('modalStartTime').value = '';
                     document.getElementById('modalEndTime').value = '';
-                    document.getElementById('modalTimeInputs').style.display = 'none';
                     document.getElementById('modalDeleteBtn').style.display = 'none';
                 }
-            },
 
-            toggleModalDay() {
-                const enabled = document.getElementById('modalEnableDay').checked;
-                document.getElementById('modalTimeInputs').style.display = enabled ? 'block' : 'none';
-                document.getElementById('modalDeleteBtn').style.display = enabled ? 'inline-block' : 'none';
+                // Auto-focus the first input after modal animation
+                setTimeout(() => {
+                    document.getElementById('modalAoName').focus();
+                }, 250);
             },
 
             saveModalDayTime() {
-                const enabled = document.getElementById('modalEnableDay').checked;
                 const location = this.currentLocation;
+                const name = document.getElementById('modalAoName').value.trim();
+                const start = document.getElementById('modalStartTime').value;
+                const end = document.getElementById('modalEndTime').value;
 
-                if (enabled) {
-                    const name = document.getElementById('modalAoName').value.trim();
-                    const start = document.getElementById('modalStartTime').value;
-                    const end = document.getElementById('modalEndTime').value;
-
+                // If all fields are empty, remove the time
+                if (!name && !start && !end) {
+                    location.times[this.editingDay] = null;
+                } else {
+                    // Otherwise, require all fields to be filled
                     if (!name || !start || !end) {
-                        alert('Please fill in all fields');
+                        alert('Please fill in all fields or leave all empty to remove the time');
                         return;
                     }
-
                     location.times[this.editingDay] = { name, start, end };
-                } else {
-                    location.times[this.editingDay] = null;
                 }
 
                 this.closeModal();
