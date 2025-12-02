@@ -172,6 +172,10 @@
             border-color: #2196F3;
         }
 
+        .day-item.empty {
+            opacity: 0.6;
+        }
+
         .day-label {
             font-weight: 600;
             color: #333;
@@ -334,6 +338,60 @@
             filter: drop-shadow(0 2px 2px rgba(0,0,0,0.1));
         }
 
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            animation: modalSlideIn 0.2s ease-out;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+        }
+
+        .modal-content {
+            margin-bottom: 24px;
+        }
+
         .day-indicator {
             padding: 2px 4px;
             border-radius: 4px;
@@ -409,42 +467,48 @@
                         <div id="daysList"></div>
                     </div>
 
-                    <div class="edit-day-form" id="editDayForm">
-                        <h4 id="editDayLabel">Edit Monday</h4>
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="enableDay" onchange="app.toggleDay()">
-                            <label for="enableDay">This day has a time</label>
-                        </div>
-                        <div id="timeInputs" style="display: none;">
-                            <div class="form-group">
-                                <label>AO Name</label>
-                                <input type="text" id="aoName">
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>Start Time</label>
-                                    <input type="time" id="startTime">
-                                </div>
-                                <div class="form-group">
-                                    <label>End Time</label>
-                                    <input type="time" id="endTime">
-                                </div>
-                            </div>
-                            <div class="button-group">
-                                <button type="button" class="btn-save" onclick="app.saveDayTime()">Save</button>
-                                <button type="button" class="btn-delete" onclick="app.deleteTime()">Delete</button>
-                            </div>
-                        </div>
-                        <div class="button-group" style="margin-top: 12px;">
-                            <button type="button" class="btn-cancel" onclick="app.closeDayEdit()">Cancel</button>
-                        </div>
-                    </div>
 
                     <div class="button-group" style="margin-top: 30px;">
                         <button type="submit" class="btn-save">Save Location</button>
                         <button type="button" class="btn-cancel" onclick="app.cancelEdit()">Cancel</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Day Edit Modal -->
+    <div class="modal-overlay" id="dayEditModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalDayLabel">Edit Monday</h3>
+            </div>
+            <div class="modal-content">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="modalEnableDay" onchange="app.toggleModalDay()">
+                    <label for="modalEnableDay">This day has a time</label>
+                </div>
+                <div id="modalTimeInputs" style="display: none;">
+                    <div class="form-group">
+                        <label>AO Name</label>
+                        <input type="text" id="modalAoName">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Start Time</label>
+                            <input type="time" id="modalStartTime">
+                        </div>
+                        <div class="form-group">
+                            <label>End Time</label>
+                            <input type="time" id="modalEndTime">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="button-group">
+                <button type="button" class="btn-save" onclick="app.saveModalDayTime()">Save</button>
+                <button type="button" class="btn-delete" onclick="app.deleteModalTime()" id="modalDeleteBtn">Delete</button>
+                <button type="button" class="btn-cancel" onclick="app.closeModal()">Cancel</button>
             </div>
         </div>
     </div>
@@ -458,7 +522,9 @@
             markers: {},
             currentLocation: null,
             editingDay: null,
-            locations: [
+            
+            // Load locations from localStorage or use defaults
+            locations: JSON.parse(localStorage.getItem('f3-locations')) || [
                 {
                     id: 1,
                     name: 'Borah Park',
@@ -509,6 +575,10 @@
             init() {
                 this.initMap();
                 this.renderMarkers();
+            },
+
+            saveToLocalStorage() {
+                localStorage.setItem('f3-locations', JSON.stringify(this.locations));
             },
 
             initMap() {
@@ -576,7 +646,7 @@
             selectLocation(location) {
                 this.currentLocation = location;
                 this.editingDay = null;
-                this.closeDayEdit();
+                this.closeModal();
                 this.renderLocationForm();
             },
 
@@ -636,37 +706,40 @@
                 const location = this.currentLocation;
                 const time = location.times[dayIndex];
 
-                document.getElementById('editDayLabel').textContent = `Edit ${DAYS[dayIndex]}`;
-                document.getElementById('editDayForm').classList.add('active');
+                document.getElementById('modalDayLabel').textContent = `Edit ${DAYS[dayIndex]}`;
+                document.getElementById('dayEditModal').classList.add('active');
 
                 if (time) {
-                    document.getElementById('enableDay').checked = true;
-                    document.getElementById('aoName').value = time.name;
-                    document.getElementById('startTime').value = time.start;
-                    document.getElementById('endTime').value = time.end;
-                    document.getElementById('timeInputs').style.display = 'block';
+                    document.getElementById('modalEnableDay').checked = true;
+                    document.getElementById('modalAoName').value = time.name;
+                    document.getElementById('modalStartTime').value = time.start;
+                    document.getElementById('modalEndTime').value = time.end;
+                    document.getElementById('modalTimeInputs').style.display = 'block';
+                    document.getElementById('modalDeleteBtn').style.display = 'inline-block';
                 } else {
-                    document.getElementById('enableDay').checked = false;
-                    document.getElementById('aoName').value = '';
-                    document.getElementById('startTime').value = '';
-                    document.getElementById('endTime').value = '';
-                    document.getElementById('timeInputs').style.display = 'none';
+                    document.getElementById('modalEnableDay').checked = false;
+                    document.getElementById('modalAoName').value = '';
+                    document.getElementById('modalStartTime').value = '';
+                    document.getElementById('modalEndTime').value = '';
+                    document.getElementById('modalTimeInputs').style.display = 'none';
+                    document.getElementById('modalDeleteBtn').style.display = 'none';
                 }
             },
 
-            toggleDay() {
-                const enabled = document.getElementById('enableDay').checked;
-                document.getElementById('timeInputs').style.display = enabled ? 'block' : 'none';
+            toggleModalDay() {
+                const enabled = document.getElementById('modalEnableDay').checked;
+                document.getElementById('modalTimeInputs').style.display = enabled ? 'block' : 'none';
+                document.getElementById('modalDeleteBtn').style.display = enabled ? 'inline-block' : 'none';
             },
 
-            saveDayTime() {
-                const enabled = document.getElementById('enableDay').checked;
+            saveModalDayTime() {
+                const enabled = document.getElementById('modalEnableDay').checked;
                 const location = this.currentLocation;
 
                 if (enabled) {
-                    const name = document.getElementById('aoName').value.trim();
-                    const start = document.getElementById('startTime').value;
-                    const end = document.getElementById('endTime').value;
+                    const name = document.getElementById('modalAoName').value.trim();
+                    const start = document.getElementById('modalStartTime').value;
+                    const end = document.getElementById('modalEndTime').value;
 
                     if (!name || !start || !end) {
                         alert('Please fill in all fields');
@@ -678,23 +751,25 @@
                     location.times[this.editingDay] = null;
                 }
 
-                this.closeDayEdit();
+                this.closeModal();
                 this.renderDaysList();
                 this.renderMarkers();
+                this.saveToLocalStorage();
             },
 
-            deleteTime() {
+            deleteModalTime() {
                 if (confirm('Delete this time?')) {
                     this.currentLocation.times[this.editingDay] = null;
-                    this.closeDayEdit();
+                    this.closeModal();
                     this.renderDaysList();
                     this.renderMarkers();
+                    this.saveToLocalStorage();
                 }
             },
 
-            closeDayEdit() {
+            closeModal() {
                 this.editingDay = null;
-                document.getElementById('editDayForm').classList.remove('active');
+                document.getElementById('dayEditModal').classList.remove('active');
             },
 
             saveLocation(e) {
@@ -708,6 +783,7 @@
 
                 this.currentLocation.name = name;
                 this.renderMarkers();
+                this.saveToLocalStorage();
                 this.cancelEdit();
             },
 
@@ -717,7 +793,7 @@
                 document.getElementById('locationForm').classList.remove('active');
                 document.querySelector('.back-button').classList.remove('active');
                 document.getElementById('emptyState').style.display = 'block';
-                this.closeDayEdit();
+                this.closeModal();
             },
 
             backToList() {
@@ -725,7 +801,16 @@
             }
         };
 
-        document.addEventListener('DOMContentLoaded', () => app.init());
+        document.addEventListener('DOMContentLoaded', () => {
+            app.init();
+            
+            // Close modal when clicking outside
+            document.getElementById('dayEditModal').addEventListener('click', (e) => {
+                if (e.target.classList.contains('modal-overlay')) {
+                    app.closeModal();
+                }
+            });
+        });
     </script>
 </body>
 </html>
