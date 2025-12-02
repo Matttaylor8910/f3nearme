@@ -1046,14 +1046,19 @@
                     `Are you sure you want to delete "${this.currentLocation.name}" and all its workout schedules? This action cannot be undone.`,
                     'Delete',
                     () => {
+                        const locationId = this.currentLocation.id;
+                        
+                        // Remove marker from map
+                        if (this.markers[locationId]) {
+                            this.map.removeLayer(this.markers[locationId]);
+                            delete this.markers[locationId];
+                        }
+                        
                         // Remove from locations array
-                        this.locations = this.locations.filter(loc => loc.id !== this.currentLocation.id);
+                        this.locations = this.locations.filter(loc => loc.id !== locationId);
                         
                         // Save to localStorage
                         this.saveToLocalStorage();
-                        
-                        // Re-render markers
-                        this.renderMarkers();
                         
                         // Go back to empty state
                         this.cancelEdit();
