@@ -42,13 +42,13 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            position: relative;
         }
 
         .location-header {
             display: none;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
             position: relative;
         }
 
@@ -124,7 +124,37 @@
         .sidebar-content {
             flex: 1;
             overflow-y: auto;
-            padding: 20px;
+            padding: 16px;
+            padding-bottom: 80px; /* Space for fixed footer */
+        }
+
+        .sidebar-header {
+            position: sticky;
+            top: 0;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 16px;
+            z-index: 10;
+            display: none;
+        }
+
+        .sidebar-header.active {
+            display: block;
+        }
+
+        .sidebar-footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            padding: 16px;
+            display: none;
+        }
+
+        .sidebar-footer.active {
+            display: block;
         }
 
         .empty-state {
@@ -135,16 +165,17 @@
         }
 
         .empty-state h3 {
-            font-size: 18px;
+            font-size: 20px;
             color: #666;
             margin-bottom: 12px;
             font-weight: 600;
         }
 
         .empty-state p {
-            font-size: 14px;
+            font-size: 16px;
             line-height: 1.5;
-            color: #888;
+            color: #7f7f7f;
+            margin-top: 24px;
         }
 
         .location-description {
@@ -188,7 +219,7 @@
             display: block;
             font-size: 12px;
             font-weight: 600;
-            color: #333;
+            color: #7f7f7f;
             margin-bottom: 6px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -212,13 +243,11 @@
         }
 
         .days-section {
-            margin-top: 30px;
             padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
         }
 
         .days-section h3 {
-            font-size: 12px;
+            font-size: 14px;
             font-weight: 600;
             color: #333;
             text-transform: uppercase;
@@ -348,7 +377,6 @@
         .button-group {
             display: flex;
             gap: 8px;
-            margin-top: 15px;
         }
 
         .button-group button {
@@ -786,7 +814,7 @@
             <div id="map"></div>
         </div>
         <div class="sidebar">
-            <div class="sidebar-content">
+            <div class="sidebar-header">
                 <div class="location-header">
                     <button class="back-button" onclick="app.backToList()">← Back to Locations</button>
                     <div class="location-menu">
@@ -796,9 +824,12 @@
                         </div>
                     </div>
                 </div>
+            </div>
+            <div class="sidebar-content">
                 <div class="empty-state" id="emptyState">
                     <h3>Welcome to F3 Locations</h3>
                     <p>Click on any colored marker on the map to view workout schedules and meeting details for that location. Each marker shows which days have scheduled workouts.</p>
+                    <p>Click anywhere on the map to add a new location.</p>
                 </div>
                 <form class="location-form" id="locationForm" onsubmit="app.saveLocation(event)">
                     <div class="days-section">
@@ -825,11 +856,13 @@
                     </div>
 
 
-                    <div class="button-group" style="margin-top: 30px;">
-                        <button type="submit" class="btn-save">Save Location</button>
-                        <button type="button" class="btn-cancel" onclick="app.cancelEdit()">Cancel</button>
-                    </div>
                 </form>
+            </div>
+            <div class="sidebar-footer" id="sidebarFooter">
+                <div class="button-group">
+                    <button type="button" class="btn-save" onclick="app.saveLocationFromFooter()">Save Location</button>
+                    <button type="button" class="btn-cancel" onclick="app.cancelEdit()">Cancel</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1085,7 +1118,7 @@
             addNewLocation(lat, lng) {
                 this.showInputDialog(
                     'Add New Location',
-                    'Enter the name of the physical meeting location (e.g., "Borah Park", "Barber Park"). This is where PAX gather for workouts, not necessarily the same name as the AO.',
+                    'Enter the name of the physical meeting location (e.g., "Borah Park", "Barber Park"). This is where PAX gather for workouts, not necessarily the same name as the AO (though it can be).',
                     'e.g., Central Park, City Hall, etc.',
                     (name) => {
                         if (!name || !name.trim()) {
@@ -1192,7 +1225,9 @@
                 const location = this.currentLocation;
                 document.getElementById('emptyState').style.display = 'none';
                 document.getElementById('locationForm').classList.add('active');
+                document.querySelector('.sidebar-header').classList.add('active');
                 document.querySelector('.location-header').classList.add('active');
+                document.getElementById('sidebarFooter').classList.add('active');
 
                 document.getElementById('locationName').value = location.name;
                 document.getElementById('latitude').value = location.lat;
@@ -1339,9 +1374,18 @@
                 this.currentLocation = null;
                 this.editingDay = null;
                 document.getElementById('locationForm').classList.remove('active');
+                document.querySelector('.sidebar-header').classList.remove('active');
                 document.querySelector('.location-header').classList.remove('active');
+                document.getElementById('sidebarFooter').classList.remove('active');
                 document.getElementById('emptyState').style.display = 'block';
                 this.closeModal();
+            },
+
+            saveLocationFromFooter() {
+                // Trigger the form submission
+                const form = document.getElementById('locationForm');
+                const event = new Event('submit', { cancelable: true });
+                form.dispatchEvent(event);
             },
 
             backToList() {
