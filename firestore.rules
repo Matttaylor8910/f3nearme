@@ -7,6 +7,12 @@ service cloud.firestore {
       allow write: if false;
     }
     
+    // Allow public read access to cities
+    match /cities/{document=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
     // Default deny for all other collections
     match /{document=**} {
       allow read, write: if false;
