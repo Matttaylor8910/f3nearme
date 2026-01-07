@@ -23,12 +23,17 @@ export class BeatdownService {
   getNearbyBeatdowns(lat?: number, lng?: number, radiusMiles: number = 100): Observable<Beatdown[]> {
     // If no location provided, return all beatdowns (legacy behavior)
     if (lat === undefined || lng === undefined) {
+      console.log('[BeatdownService] Loading all beatdowns (no location provided)');
       return this.afs.collection<Beatdown>('beatdowns').snapshotChanges().pipe(
-        map(actions => actions.map(a => {
-          const data = a.payload.doc.data() as Beatdown;
-          const id = a.payload.doc.id;
-          return { ...data, id };
-        }))
+        map(actions => {
+          const count = actions.length;
+          console.log(`[BeatdownService] Read ${count} beatdowns from Firestore (all documents)`);
+          return actions.map(a => {
+            const data = a.payload.doc.data() as Beatdown;
+            const id = a.payload.doc.id;
+            return { ...data, id };
+          });
+        })
       );
     }
 
@@ -47,6 +52,8 @@ export class BeatdownService {
       geohashField = 'geohash_6';
     }
 
+    console.log(`[BeatdownService] Using geohash queries: precision=${geohashPrecision}, field=${geohashField}, radius=${radiusMiles} miles, center=(${lat}, ${lng})`);
+
     // Calculate center geohash
     const centerGeohash = ngeohash.encode(lat, lng, geohashPrecision);
     
@@ -54,10 +61,12 @@ export class BeatdownService {
     const neighbors = ngeohash.neighbors(centerGeohash);
     const geohashPrefixes = [centerGeohash, ...neighbors];
 
+    console.log(`[BeatdownService] Querying ${geohashPrefixes.length} geohash prefixes: ${geohashPrefixes.join(', ')}`);
+
     // Query Firestore for each geohash prefix
     // Since geohash_4/5/6 are stored as exact prefixes, we query for exact matches
     // Use range query: prefix <= geohash < prefix + next character in base32
-    const queries = geohashPrefixes.map(prefix => {
+    const queries = geohashPrefixes.map((prefix, index) => {
       // Get the next character after the prefix for upper bound
       // Base32 characters: 0123456789bcdefghjkmnpqrstuvwxyz
       // We'll use prefix + 'z' + 1 (which is '{') as upper bound, but filter client-side
@@ -65,11 +74,15 @@ export class BeatdownService {
       return this.afs.collection<Beatdown>('beatdowns', ref =>
         ref.where(geohashField, '==', prefix)
       ).snapshotChanges().pipe(
-        map(actions => actions.map(a => {
-          const data = a.payload.doc.data() as Beatdown;
-          const id = a.payload.doc.id;
-          return { ...data, id };
-        }))
+        map(actions => {
+          const count = actions.length;
+          console.log(`[BeatdownService] Geohash prefix "${prefix}" (${index + 1}/${geohashPrefixes.length}): ${count} documents`);
+          return actions.map(a => {
+            const data = a.payload.doc.data() as Beatdown;
+            const id = a.payload.doc.id;
+            return { ...data, id };
+          });
+        })
       );
     });
 
@@ -78,7 +91,9 @@ export class BeatdownService {
       map(results => {
         // Flatten and deduplicate by document ID
         const beatdownMap = new Map<string, Beatdown>();
-        results.forEach(beatdowns => {
+        let totalReads = 0;
+        results.forEach((beatdowns, index) => {
+          totalReads += beatdowns.length;
           beatdowns.forEach(bd => {
             if (!beatdownMap.has(bd.id)) {
               beatdownMap.set(bd.id, bd);
@@ -87,11 +102,16 @@ export class BeatdownService {
         });
 
         const allBeatdowns = Array.from(beatdownMap.values());
+        console.log(`[BeatdownService] Total documents read from Firestore: ${totalReads} (${allBeatdowns.length} unique after deduplication)`);
         
         // Filter client-side for exact radius using Haversine formula
-        return allBeatdowns.filter(bd => 
+        const filtered = allBeatdowns.filter(bd => 
           this.isWithinRadius(bd.lat, bd.long, lat, lng, radiusMiles)
         );
+        
+        console.log(`[BeatdownService] After client-side radius filtering: ${filtered.length} beatdowns within ${radiusMiles} miles`);
+        
+        return filtered;
       })
     );
   }
@@ -100,16 +120,21 @@ export class BeatdownService {
    * Get all cities from the cities collection
    */
   getCities(): Observable<Array<{city: string; regions: string[]; lat: number; long: number}>> {
+    console.log('[BeatdownService] Loading cities from cities collection');
     return this.afs.collection('cities').snapshotChanges().pipe(
-      map(actions => actions.map(a => {
-        const data = a.payload.doc.data();
-        return {
-          city: data['city'],
-          regions: data['regions'] || [],
-          lat: data['lat'],
-          long: data['long']
-        };
-      }))
+      map(actions => {
+        const count = actions.length;
+        console.log(`[BeatdownService] Read ${count} cities from Firestore`);
+        return actions.map(a => {
+          const data = a.payload.doc.data();
+          return {
+            city: data['city'],
+            regions: data['regions'] || [],
+            lat: data['lat'],
+            long: data['long']
+          };
+        });
+      })
     );
   }
 

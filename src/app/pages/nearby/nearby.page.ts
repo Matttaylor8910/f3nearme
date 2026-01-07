@@ -131,20 +131,42 @@ export class NearbyPage {
 
   /**
    * Load the beatdowns from Firestore
+   * Uses geohash queries if location is available, otherwise loads all (legacy)
    */
   loadBeatdowns() {
-    this.beatdownService.getNearbyBeatdowns().subscribe({
-      next: (beatdowns) => {
-        this.allBDs = beatdowns;
-        this.saveToCache();
-        this.loadCities();
-        this.setNearbyBeatdowns();
-      },
-      error: (error) => {
-        console.error('Error loading beatdowns:', error);
-        this.loadFromCache();
-      }
-    });
+    // If we have a selected location, use geohash queries for efficiency
+    if (this.selectedLocation) {
+      this.beatdownService.getNearbyBeatdowns(
+        this.selectedLocation.latitude,
+        this.selectedLocation.longitude,
+        this.limit
+      ).subscribe({
+        next: (beatdowns) => {
+          this.allBDs = beatdowns;
+          this.saveToCache();
+          this.loadCities();
+          this.setNearbyBeatdowns();
+        },
+        error: (error) => {
+          console.error('Error loading beatdowns:', error);
+          this.loadFromCache();
+        }
+      });
+    } else {
+      // No location yet, load all (will be filtered when location is set)
+      this.beatdownService.getNearbyBeatdowns().subscribe({
+        next: (beatdowns) => {
+          this.allBDs = beatdowns;
+          this.saveToCache();
+          this.loadCities();
+          this.setNearbyBeatdowns();
+        },
+        error: (error) => {
+          console.error('Error loading beatdowns:', error);
+          this.loadFromCache();
+        }
+      });
+    }
   }
 
   /**
@@ -219,8 +241,8 @@ export class NearbyPage {
           latitude: this.ipLocation.latitude,
           longitude: this.ipLocation.longitude
         };
-        this.loadCities();
-        this.setNearbyBeatdowns();
+        // Reload beatdowns with geohash queries now that we have location
+        this.loadBeatdowns();
       }
     } catch (error) {
       console.error('Error getting IP location:', error);
@@ -236,8 +258,8 @@ export class NearbyPage {
     this.selectedLocation = {latitude, longitude};  // Set selected location to match my location
     this.locationFailure = false;
     setTimeout(() => {
-      this.loadCities();
-      this.setNearbyBeatdowns();
+      // Reload beatdowns with geohash queries now that we have location
+      this.loadBeatdowns();
     });
   }
 
@@ -447,7 +469,12 @@ export class NearbyPage {
   updateLimit(limit: number) {
     this.limit = limit;
     localStorage.setItem('miles', `${limit}`);
-    this.setNearbyBeatdowns();
+    // Reload with new radius if we have location
+    if (this.selectedLocation) {
+      this.loadBeatdowns();
+    } else {
+      this.setNearbyBeatdowns();
+    }
   }
 
   /**
@@ -609,7 +636,8 @@ export class NearbyPage {
     };
     this.locationFailure = false;
     this.showRegionModal = false;
-    this.setNearbyBeatdowns();
+    // Reload beatdowns with geohash queries for the selected city
+    this.loadBeatdowns();
   }
 
   /**
@@ -618,16 +646,24 @@ export class NearbyPage {
   selectMyLocation() {
     this.selectedCity = null;
     this.showRegionModal = false;
-    this.selectedLocation = {
-      latitude: this.myLocation?.latitude,
-      longitude: this.myLocation?.longitude
-    };
+    
+    // If we already have location, use it immediately
+    if (this.myLocation) {
+      this.selectedLocation = {
+        latitude: this.myLocation.latitude,
+        longitude: this.myLocation.longitude
+      };
+      // Reload beatdowns with geohash queries for my location
+      this.loadBeatdowns();
+      return;
+    }
     
     // If we already know location access is denied, don't try again
     if (this.locationFailure) {
       return;
     }
     
+    // Try to get location, which will call loadBeatdowns() when successful
     this.setMyLocation();
   }
 
