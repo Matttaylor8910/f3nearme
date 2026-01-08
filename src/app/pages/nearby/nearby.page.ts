@@ -137,44 +137,12 @@ export class NearbyPage {
       next: (beatdowns) => {
         this.allBDs = beatdowns;
         this.saveToCache();
-        this.loadCities();
+        this.extractCities();
         this.setNearbyBeatdowns();
       },
       error: (error) => {
         console.error('Error loading beatdowns:', error);
         this.loadFromCache();
-      }
-    });
-  }
-
-  /**
-   * Load cities from the cities collection
-   */
-  loadCities() {
-    this.beatdownService.getCities().subscribe({
-      next: (citiesData) => {
-        const userLoc = this.userLocation;
-        this.cities = citiesData.map(cityData => ({
-          city: cityData.city,
-          regions: cityData.regions,
-          lat: cityData.lat,
-          long: cityData.long,
-          distance: userLoc ? this.distance(
-            cityData.lat,
-            cityData.long,
-            userLoc.latitude,
-            userLoc.longitude
-          ) : undefined,
-        })).sort((a, b) => {
-          // Sort by distance, fall back to city name
-          return (a.distance || 0) - (b.distance || 0) || a.city.localeCompare(b.city);
-        });
-        this.filteredCities = [...this.cities];
-      },
-      error: (error) => {
-        console.error('Error loading cities:', error);
-        // Fallback to extracting from beatdowns if cities collection fails
-        this.extractCities();
       }
     });
   }
@@ -219,7 +187,7 @@ export class NearbyPage {
           latitude: this.ipLocation.latitude,
           longitude: this.ipLocation.longitude
         };
-        this.loadCities();
+        this.extractCities();
         this.setNearbyBeatdowns();
       }
     } catch (error) {
@@ -236,7 +204,7 @@ export class NearbyPage {
     this.selectedLocation = {latitude, longitude};  // Set selected location to match my location
     this.locationFailure = false;
     setTimeout(() => {
-      this.loadCities();
+      this.extractCities();
       this.setNearbyBeatdowns();
     });
   }

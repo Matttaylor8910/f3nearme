@@ -8,8 +8,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { Request, Response } from 'express';
-// @ts-ignore - ngeohash doesn't have type definitions
-import * as ngeohash from 'ngeohash';
 
 interface MapWebhook {
   action: 'map.updated'|'map.deleted';
@@ -99,10 +97,6 @@ interface Beatdown {
   long: number;
   locationId: number;
   eventId: number;
-  geohash?: string;
-  geohash_4?: string;
-  geohash_5?: string;
-  geohash_6?: string;
 }
 
 admin.initializeApp();
@@ -122,134 +116,6 @@ function formatTime(militaryTime: string | null | undefined): string {
   const displayHours = hours % 12 || 12;
   return `${displayHours}:${minutes} ${period}`;
 }
-
-/**
- * Extract city and state/country from address, e.g. 'Boise, ID'
- * Matches frontend extractCity() logic
- */
-function extractCityFromAddress(address: string | null | undefined): string {
-  if (!address) return 'Unknown Location';
-  
-  // Split by comma and clean up the parts
-  const parts = address
-    .split(',')
-    .map(p => p.trim())
-    .filter(p => p.length > 0); // Remove empty parts
-  
-  if (parts.length >= 3) {
-    // e.g. '123 Main St, Boise, ID, USA' or 'Boise, ID, USA'
-    // Take the last two parts for city,state
-    return `${parts[parts.length - 2]}, ${parts[parts.length - 1]}`;
-  } else if (parts.length === 2) {
-    // e.g. 'Boise, ID'
-    return `${parts[0]}, ${parts[1]}`;
-  } else if (parts.length === 1) {
-    return parts[0];
-  }
-  return address;
-}
-
-/**
- * Normalize a string for deduplication (lowercase, trim, remove extra spaces)
- * Matches frontend normalizeKey() logic
- */
-function normalizeCityKey(str: string | null | undefined): string {
-  return (str || '').toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-/**
- * Sanitize a string to be used as a Firestore document ID
- * Firestore document IDs cannot contain: /, \, ?, #, [, ], and cannot be longer than 1500 bytes
- */
-function sanitizeDocumentId(key: string): string {
-  // Replace invalid characters with underscores
-  return key
-    .replace(/\//g, '_')
-    .replace(/\\/g, '_')
-    .replace(/\?/g, '_')
-    .replace(/#/g, '_')
-    .replace(/\[/g, '_')
-    .replace(/\]/g, '_')
-    // Ensure it's not empty and not too long
-    .substring(0, 1500) || 'unknown';
-}
-
-/**
- * Update or create a city document from a beatdown
- * Note: This should be called after beatdowns are saved, and will recalculate
- * the city from all beatdowns in that city to ensure accuracy
- */
-async function updateCityFromBeatdown(db: admin.firestore.Firestore, beatdown: Beatdown): Promise<void> {
-  const city = extractCityFromAddress(beatdown.address);
-  const normalizedKey = normalizeCityKey(city);
-  
-  if (!normalizedKey || normalizedKey === 'unknown location') {
-    return; // Skip invalid cities
-  }
-
-  // Recalculate city from all beatdowns to ensure accuracy
-  const sanitizedKey = sanitizeDocumentId(normalizedKey);
-  await recalculateCityFromBeatdowns(db, sanitizedKey, normalizedKey);
-}
-
-/**
- * Recalculate city data from all beatdowns in that city
- * @param sanitizedKey - Sanitized document ID for Firestore
- * @param normalizedKey - Original normalized key for matching beatdowns
- */
-async function recalculateCityFromBeatdowns(db: admin.firestore.Firestore, sanitizedKey: string, normalizedKey?: string): Promise<void> {
-  // If normalizedKey not provided, use sanitizedKey (for backward compatibility)
-  const matchKey = normalizedKey || sanitizedKey;
-  
-  // Find all beatdowns with matching city
-  const allBeatdowns = await db.collection('beatdowns').get();
-  const cityBeatdowns: Beatdown[] = [];
-
-  allBeatdowns.docs.forEach(doc => {
-    const beatdown = doc.data() as Beatdown;
-    const beatdownCity = extractCityFromAddress(beatdown.address);
-    if (normalizeCityKey(beatdownCity) === matchKey) {
-      cityBeatdowns.push(beatdown);
-    }
-  });
-
-  if (cityBeatdowns.length === 0) {
-    // No beatdowns remain, delete city if it exists
-    const cityRef = db.collection('cities').doc(sanitizedKey);
-    const cityDoc = await cityRef.get();
-    if (cityDoc.exists) {
-      await cityRef.delete();
-    }
-    return;
-  }
-
-  // Get city name from first beatdown
-  const firstBeatdown = cityBeatdowns[0];
-  const cityName = extractCityFromAddress(firstBeatdown.address);
-  const actualNormalizedKey = normalizeCityKey(cityName);
-
-  // Aggregate regions from all beatdowns
-  const regionsSet = new Set<string>();
-  cityBeatdowns.forEach(bd => {
-    if (bd.region) {
-      regionsSet.add(bd.region);
-    }
-  });
-
-  // Create or update city document
-  await db.collection('cities').doc(sanitizedKey).set({
-    city: cityName,
-    normalizedKey: actualNormalizedKey,
-    lat: firstBeatdown.lat,
-    long: firstBeatdown.long,
-    regions: Array.from(regionsSet),
-    beatdownCount: cityBeatdowns.length,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp()
-  }, { merge: true });
-}
-
-// Note: deleteCityIfEmpty was removed - we use recalculateCityFromBeatdowns directly
-// which handles deletion automatically when no beatdowns remain
 
 /**
  * Fetches location data from the F3 API
@@ -293,12 +159,6 @@ async function fetchLocationData(locationId: number): Promise<any> {
  * Transforms API data into our Beatdown format
  */
 function transformToBeatdown(location: Location, event: Event): Beatdown {
-  // Calculate geohash for geographic queries
-  const geohash = ngeohash.encode(location.lat, location.lon, 12);
-  const geohash_4 = geohash.substring(0, 4);
-  const geohash_5 = geohash.substring(0, 5);
-  const geohash_6 = geohash.substring(0, 6);
-
   return {
     dayOfWeek: event.dayOfWeek,
     timeString: `${formatTime(event.startTime)} - ${formatTime(event.endTime)}`,
@@ -311,11 +171,7 @@ function transformToBeatdown(location: Location, event: Event): Beatdown {
     lat: location.lat,
     long: location.lon,
     locationId: location.id,
-    eventId: event.id,
-    geohash,
-    geohash_4,
-    geohash_5,
-    geohash_6
+    eventId: event.id
   };
 }
 
@@ -406,9 +262,6 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
     console.log(`[DB] Existing doc IDs for locationId ${locationId}:`, Array.from(existingDocs.keys()));
     console.log(`[DB] To-save doc IDs for locationId ${locationId}:`, Array.from(toSaveDocIds));
 
-    // Track cities that need recalculation after deletes
-    const citiesToRecalculate = new Set<string>();
-
     // Upsert all beatdowns from the API response
     const saveBatches = chunkArray(beatdownsToSave, BATCH_SIZE);
     console.log(`[DB] Saving ${beatdownsToSave.length} beatdowns in ${saveBatches.length} batches for locationId: ${locationId}`);
@@ -425,31 +278,11 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
       console.log(`[DB] Committed save batch ${i + 1}/${saveBatches.length}`);
     }
 
-    // Update cities for all saved beatdowns
-    console.log(`[DB] Updating cities for ${beatdownsToSave.length} beatdowns`);
-    for (const { beatdown } of beatdownsToSave) {
-      try {
-        await updateCityFromBeatdown(db, beatdown);
-      } catch (error) {
-        console.error(`[DB] Error updating city for beatdown ${beatdown.name}:`, error);
-      }
-    }
-
     // Delete any existing docs not in toSave
     const docsToDelete = Array.from(existingDocs.entries())
       .filter(([docId]) => !toSaveDocIds.has(docId))
       .map(([, doc]) => doc);
     console.log(`[DB] Docs to delete for locationId ${locationId}:`, docsToDelete.map(doc => doc.id));
-    
-    // Track cities affected by deletions
-    docsToDelete.forEach(doc => {
-      const beatdown = doc.data() as Beatdown;
-      const city = extractCityFromAddress(beatdown.address);
-      const normalizedKey = normalizeCityKey(city);
-      if (normalizedKey && normalizedKey !== 'unknown location') {
-        citiesToRecalculate.add(normalizedKey);
-      }
-    });
     
     const deleteBatches = chunkArray(docsToDelete, BATCH_SIZE);
     if (deleteBatches.length > 0) {
@@ -464,16 +297,6 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
         }
         await writeBatch.commit();
         console.log(`[DB] Committed delete batch ${i + 1}/${deleteBatches.length}`);
-      }
-    }
-
-    // Recalculate cities after deletions
-    console.log(`[DB] Recalculating ${citiesToRecalculate.size} cities after deletions`);
-    for (const [normalizedKey, sanitizedKey] of citiesToRecalculate) {
-      try {
-        await recalculateCityFromBeatdowns(db, sanitizedKey, normalizedKey);
-      } catch (error) {
-        console.error(`[DB] Error recalculating city ${normalizedKey}:`, error);
       }
     }
     
@@ -524,42 +347,7 @@ async function updateEventBeatdown(db: admin.firestore.Firestore, eventId: numbe
     if (event) {
       console.log(`[DB] Found event ${eventId} ("${event.name}") in location data, updating beatdown`);
       const beatdown = transformToBeatdown(location, event);
-      
-      // Handle city update if address changed
-      const oldCity = extractCityFromAddress(existingBeatdown.address);
-      const newCity = extractCityFromAddress(beatdown.address);
-      const oldCityKey = normalizeCityKey(oldCity);
-      const newCityKey = normalizeCityKey(newCity);
-      
       await updateBeatdown(db, beatdown, existingBeatdown);
-      
-      // Update cities
-      if (oldCityKey !== newCityKey) {
-        // City changed, recalculate old city and update new city
-        if (oldCityKey && oldCityKey !== 'unknown location') {
-          try {
-            const sanitizedOldKey = sanitizeDocumentId(oldCityKey);
-            await recalculateCityFromBeatdowns(db, sanitizedOldKey, oldCityKey);
-          } catch (error) {
-            console.error(`[DB] Error recalculating old city ${oldCityKey}:`, error);
-          }
-        }
-        if (newCityKey && newCityKey !== 'unknown location') {
-          try {
-            await updateCityFromBeatdown(db, beatdown);
-          } catch (error) {
-            console.error(`[DB] Error updating new city ${newCityKey}:`, error);
-          }
-        }
-      } else {
-        // Same city, just update
-        try {
-          await updateCityFromBeatdown(db, beatdown);
-        } catch (error) {
-          console.error(`[DB] Error updating city for beatdown:`, error);
-        }
-      }
-      
       const duration = Date.now() - startTime;
       console.log(`[DB] Successfully updated beatdown for eventId ${eventId} in ${duration}ms`);
     } else {
@@ -593,18 +381,6 @@ async function deleteBeatdownsByLocation(db: admin.firestore.Firestore, location
       console.log(`[DB] No beatdowns found to delete for locationId: ${locationId}`);
       return;
     }
-
-    // Track cities affected by deletions (store both normalized and sanitized keys)
-    const citiesToRecalculate = new Map<string, string>(); // normalizedKey -> sanitizedKey
-    snapshot.docs.forEach(doc => {
-      const beatdown = doc.data() as Beatdown;
-      const city = extractCityFromAddress(beatdown.address);
-      const normalizedKey = normalizeCityKey(city);
-      if (normalizedKey && normalizedKey !== 'unknown location') {
-        const sanitizedKey = sanitizeDocumentId(normalizedKey);
-        citiesToRecalculate.set(normalizedKey, sanitizedKey);
-      }
-    });
     
     const batches = chunkArray(snapshot.docs, BATCH_SIZE);
     console.log(`[DB] Deleting ${snapshot.docs.length} beatdowns in ${batches.length} batches for locationId: ${locationId}`);
@@ -619,16 +395,6 @@ async function deleteBeatdownsByLocation(db: admin.firestore.Firestore, location
       });
       await writeBatch.commit();
       console.log(`[DB] Committed delete batch ${i + 1}/${batches.length}`);
-    }
-
-    // Recalculate cities after deletions
-    console.log(`[DB] Recalculating ${citiesToRecalculate.size} cities after deletions`);
-    for (const [normalizedKey, sanitizedKey] of citiesToRecalculate) {
-      try {
-        await recalculateCityFromBeatdowns(db, sanitizedKey, normalizedKey);
-      } catch (error) {
-        console.error(`[DB] Error recalculating city ${normalizedKey}:`, error);
-      }
     }
     
     const duration = Date.now() - startTime;
@@ -658,18 +424,6 @@ async function deleteBeatdownsByEvent(db: admin.firestore.Firestore, eventId: nu
       console.log(`[DB] No beatdowns found to delete for eventId: ${eventId}`);
       return;
     }
-
-    // Track cities affected by deletions (store both normalized and sanitized keys)
-    const citiesToRecalculate = new Map<string, string>(); // normalizedKey -> sanitizedKey
-    snapshot.docs.forEach(doc => {
-      const beatdown = doc.data() as Beatdown;
-      const city = extractCityFromAddress(beatdown.address);
-      const normalizedKey = normalizeCityKey(city);
-      if (normalizedKey && normalizedKey !== 'unknown location') {
-        const sanitizedKey = sanitizeDocumentId(normalizedKey);
-        citiesToRecalculate.set(normalizedKey, sanitizedKey);
-      }
-    });
     
     const batches = chunkArray(snapshot.docs, BATCH_SIZE);
     console.log(`[DB] Deleting ${snapshot.docs.length} beatdowns in ${batches.length} batches for eventId: ${eventId}`);
@@ -684,16 +438,6 @@ async function deleteBeatdownsByEvent(db: admin.firestore.Firestore, eventId: nu
       });
       await writeBatch.commit();
       console.log(`[DB] Committed delete batch ${i + 1}/${batches.length}`);
-    }
-
-    // Recalculate cities after deletions
-    console.log(`[DB] Recalculating ${citiesToRecalculate.size} cities after deletions`);
-    for (const [normalizedKey, sanitizedKey] of citiesToRecalculate) {
-      try {
-        await recalculateCityFromBeatdowns(db, sanitizedKey, normalizedKey);
-      } catch (error) {
-        console.error(`[DB] Error recalculating city ${normalizedKey}:`, error);
-      }
     }
     
     const duration = Date.now() - startTime;
