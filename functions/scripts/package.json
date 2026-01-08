@@ -10,8 +10,7 @@
   "dependencies": {
     "axios": "^1.6.7",
     "firebase-admin": "^12.0.0",
-    "lodash": "^4.17.21",
-    "ngeohash": "^0.6.3"
+    "lodash": "^4.17.21"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.202",
