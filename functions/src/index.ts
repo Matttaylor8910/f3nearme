@@ -8,6 +8,8 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { Request, Response } from 'express';
+// @ts-ignore - ngeohash doesn't have type definitions
+import * as ngeohash from 'ngeohash';
 
 interface MapWebhook {
   action: 'map.updated'|'map.deleted';
@@ -97,6 +99,10 @@ interface Beatdown {
   long: number;
   locationId: number;
   eventId: number;
+  geohash?: string;
+  geohash_4?: string;
+  geohash_5?: string;
+  geohash_6?: string;
 }
 
 admin.initializeApp();
@@ -287,6 +293,12 @@ async function fetchLocationData(locationId: number): Promise<any> {
  * Transforms API data into our Beatdown format
  */
 function transformToBeatdown(location: Location, event: Event): Beatdown {
+  // Calculate geohash for geographic queries
+  const geohash = ngeohash.encode(location.lat, location.lon, 12);
+  const geohash_4 = geohash.substring(0, 4);
+  const geohash_5 = geohash.substring(0, 5);
+  const geohash_6 = geohash.substring(0, 6);
+
   return {
     dayOfWeek: event.dayOfWeek,
     timeString: `${formatTime(event.startTime)} - ${formatTime(event.endTime)}`,
@@ -299,7 +311,11 @@ function transformToBeatdown(location: Location, event: Event): Beatdown {
     lat: location.lat,
     long: location.lon,
     locationId: location.id,
-    eventId: event.id
+    eventId: event.id,
+    geohash,
+    geohash_4,
+    geohash_5,
+    geohash_6
   };
 }
 

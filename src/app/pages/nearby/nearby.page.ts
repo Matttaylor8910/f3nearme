@@ -101,8 +101,6 @@ export class NearbyPage {
   selectedCity: RegionCity | null = null;
   showRegionModal = false;
   showNearbyCities = false;
-  citiesLoaded = false; // Track if cities have been loaded
-  citiesLoading = false; // Prevent duplicate loads
 
   constructor(
       private readonly beatdownService: BeatdownService,
@@ -112,9 +110,8 @@ export class NearbyPage {
 
   ngOnInit() {
     this.loadFromCache();
-    // Set location - cities and beatdowns will load once location is available
     this.setMyLocation();
-    // Don't load cities or beatdowns here - wait for location to be set
+    this.loadBeatdowns();
   }
 
   get filterTooShort(): boolean {
@@ -134,124 +131,74 @@ export class NearbyPage {
 
   /**
    * Load the beatdowns from Firestore
-   * Requires a selected location - uses bounding box queries for efficiency
+   * Uses geohash queries if location is available, otherwise loads all (legacy)
    */
   loadBeatdowns() {
-    // Only load if we have a location - don't load all beatdowns
-    if (!this.selectedLocation) {
-      console.log('[NearbyPage] Cannot load beatdowns - no location available yet');
-      return;
-    }
-
-    console.log(`[NearbyPage] Loading beatdowns for location (${this.selectedLocation.latitude}, ${this.selectedLocation.longitude})`);
-    this.beatdownService.getNearbyBeatdowns(
-      this.selectedLocation.latitude,
-      this.selectedLocation.longitude,
-      this.limit
-    ).subscribe({
-      next: (beatdowns) => {
-        this.allBDs = beatdowns;
-        this.saveToCache();
-        this.setNearbyBeatdowns();
-      },
-      error: (error) => {
-        console.error('Error loading beatdowns:', error);
-        // Fall back to cached data if available
-        if (!this.allBDs) {
-          this.loadFromCache();
-        }
-      }
-    });
-  }
-
-  /**
-   * Load cities from the cities collection within a radius
-   * @param radiusMiles Radius in miles (default 300)
-   * @param loadAll If true, load all cities (for search functionality)
-   */
-  loadCities(radiusMiles: number = 300, loadAll: boolean = false) {
-    // Prevent duplicate loads
-    if (this.citiesLoading) {
-      console.log('[NearbyPage] Cities already loading, skipping duplicate request');
-      return;
-    }
-
-    const userLoc = this.userLocation || this.selectedLocation;
-    
-    this.citiesLoading = true;
-    
-    if (loadAll || !userLoc) {
-      // Load all cities (for search or when no location available)
-      console.log('[NearbyPage] Loading all cities (for search or no location)');
-      this.beatdownService.getCities().subscribe({
-        next: (citiesData) => {
-          // If there's active search text, preserve the filter
-          const preserveFilter = !!this.citySearchText;
-          this.processCitiesData(citiesData, userLoc, preserveFilter);
-          this.citiesLoaded = true;
-          this.citiesLoading = false;
-          // If there was search text, reapply the filter
-          if (preserveFilter) {
-            this.applyCityFilter(this.citySearchText);
-          }
+    // If we have a selected location, use geohash queries for efficiency
+    if (this.selectedLocation) {
+      this.beatdownService.getNearbyBeatdowns(
+        this.selectedLocation.latitude,
+        this.selectedLocation.longitude,
+        this.limit
+      ).subscribe({
+        next: (beatdowns) => {
+          this.allBDs = beatdowns;
+          this.saveToCache();
+          this.loadCities();
+          this.setNearbyBeatdowns();
         },
         error: (error) => {
-          console.error('Error loading cities:', error);
-          this.citiesLoading = false;
-          // Fallback to extracting from beatdowns if cities collection fails
-          this.extractCities();
+          console.error('Error loading beatdowns:', error);
+          this.loadFromCache();
         }
       });
     } else {
-      // Load cities within radius
-      console.log(`[NearbyPage] Loading cities within ${radiusMiles} miles of (${userLoc.latitude}, ${userLoc.longitude})`);
-      this.beatdownService.getCities(userLoc.latitude, userLoc.longitude, radiusMiles).subscribe({
-        next: (citiesData) => {
-          // If there's active search text, preserve the filter
-          const preserveFilter = !!this.citySearchText;
-          this.processCitiesData(citiesData, userLoc, preserveFilter);
-          this.citiesLoaded = true;
-          this.citiesLoading = false;
-          // If there was search text, reapply the filter
-          if (preserveFilter) {
-            this.applyCityFilter(this.citySearchText);
-          }
+      // No location yet, load all (will be filtered when location is set)
+      this.beatdownService.getNearbyBeatdowns().subscribe({
+        next: (beatdowns) => {
+          this.allBDs = beatdowns;
+          this.saveToCache();
+          this.loadCities();
+          this.setNearbyBeatdowns();
         },
         error: (error) => {
-          console.error('Error loading cities:', error);
-          this.citiesLoading = false;
-          // Fallback to extracting from beatdowns if cities collection fails
-          this.extractCities();
+          console.error('Error loading beatdowns:', error);
+          this.loadFromCache();
         }
       });
     }
   }
 
   /**
-   * Process cities data and update the cities list
-   * @param preserveFilter If true, don't reset filteredCities (useful when loading during search)
+   * Load cities from the cities collection
    */
-  private processCitiesData(citiesData: Array<{city: string; regions: string[]; lat: number; long: number}>, userLoc: Coords | null, preserveFilter: boolean = false) {
-    this.cities = citiesData.map(cityData => ({
-      city: cityData.city,
-      regions: cityData.regions,
-      lat: cityData.lat,
-      long: cityData.long,
-      distance: userLoc ? this.distance(
-        cityData.lat,
-        cityData.long,
-        userLoc.latitude,
-        userLoc.longitude
-      ) : undefined,
-    })).sort((a, b) => {
-      // Sort by distance, fall back to city name
-      return (a.distance || 0) - (b.distance || 0) || a.city.localeCompare(b.city);
+  loadCities() {
+    this.beatdownService.getCities().subscribe({
+      next: (citiesData) => {
+        const userLoc = this.userLocation;
+        this.cities = citiesData.map(cityData => ({
+          city: cityData.city,
+          regions: cityData.regions,
+          lat: cityData.lat,
+          long: cityData.long,
+          distance: userLoc ? this.distance(
+            cityData.lat,
+            cityData.long,
+            userLoc.latitude,
+            userLoc.longitude
+          ) : undefined,
+        })).sort((a, b) => {
+          // Sort by distance, fall back to city name
+          return (a.distance || 0) - (b.distance || 0) || a.city.localeCompare(b.city);
+        });
+        this.filteredCities = [...this.cities];
+      },
+      error: (error) => {
+        console.error('Error loading cities:', error);
+        // Fallback to extracting from beatdowns if cities collection fails
+        this.extractCities();
+      }
     });
-    
-    // Only reset filteredCities if not preserving filter (i.e., not during search)
-    if (!preserveFilter) {
-      this.filteredCities = [...this.cities];
-    }
   }
 
   /**
@@ -294,7 +241,7 @@ export class NearbyPage {
           latitude: this.ipLocation.latitude,
           longitude: this.ipLocation.longitude
         };
-        // Only load beatdowns - cities will load when modal opens
+        // Reload beatdowns with geohash queries now that we have location
         this.loadBeatdowns();
       }
     } catch (error) {
@@ -311,7 +258,7 @@ export class NearbyPage {
     this.selectedLocation = {latitude, longitude};  // Set selected location to match my location
     this.locationFailure = false;
     setTimeout(() => {
-      // Only load beatdowns - cities will load when modal opens
+      // Reload beatdowns with geohash queries now that we have location
       this.loadBeatdowns();
     });
   }
@@ -650,55 +597,16 @@ export class NearbyPage {
 
   /**
    * Filter cities based on search text
-   * If searching, loads all cities to ensure search works across all locations
    */
   filterCities(event: any) {
     const searchText = event.target.value.toLowerCase();
     this.citySearchText = searchText;
     
     if (!searchText) {
-      // No search text - use the current cities list (within radius)
       this.filteredCities = [...this.cities];
       return;
     }
 
-    // If we're searching and don't have all cities loaded, load them
-    // Check if we have a reasonable number of cities (if we have < 500, we probably only have radius cities)
-    if (this.cities.length < 500 && !this.citiesLoading) {
-      console.log('[NearbyPage] Search detected - loading all cities for search');
-      // Load all cities for search (bypass the loading flag since we're intentionally reloading)
-      const wasLoading = this.citiesLoading;
-      this.citiesLoading = true;
-      // Store the current search text to apply filter after loading
-      const currentSearchText = searchText;
-      this.beatdownService.getCities().subscribe({
-        next: (allCitiesData) => {
-          const userLoc = this.userLocation || this.selectedLocation;
-          // Preserve filter - don't reset filteredCities, we'll filter after
-          this.processCitiesData(allCitiesData, userLoc, true);
-          this.citiesLoaded = true;
-          this.citiesLoading = false;
-          // Apply filter with the search text that was active when we started loading
-          // Use current search text in case user kept typing
-          this.applyCityFilter(this.citySearchText || currentSearchText);
-        },
-        error: (error) => {
-          console.error('Error loading all cities for search:', error);
-          this.citiesLoading = wasLoading;
-          // Fall back to filtering existing cities
-          this.applyCityFilter(searchText);
-        }
-      });
-    } else {
-      // We already have all cities, just filter
-      this.applyCityFilter(searchText);
-    }
-  }
-
-  /**
-   * Apply the city filter based on search text
-   */
-  private applyCityFilter(searchText: string) {
     // Check if the search text matches a state name
     const matchingStates = Object.entries(STATE_MAP).filter(([state, abbr]) => state.toLowerCase().includes(searchText) || abbr.toLowerCase().includes(searchText));
 
@@ -728,9 +636,7 @@ export class NearbyPage {
     };
     this.locationFailure = false;
     this.showRegionModal = false;
-    // Reload beatdowns for the selected city
-    // Cities will reload when modal is opened again
-    this.citiesLoaded = false; // Reset so cities reload with new location when modal opens
+    // Reload beatdowns with geohash queries for the selected city
     this.loadBeatdowns();
   }
 
@@ -747,9 +653,7 @@ export class NearbyPage {
         latitude: this.myLocation.latitude,
         longitude: this.myLocation.longitude
       };
-      // Reload beatdowns for my location
-      // Cities will reload when modal is opened again
-      this.citiesLoaded = false; // Reset so cities reload with new location when modal opens
+      // Reload beatdowns with geohash queries for my location
       this.loadBeatdowns();
       return;
     }
@@ -794,19 +698,7 @@ export class NearbyPage {
   openRegionModal() {
     this.showRegionModal = true;
     this.citySearchText = '';
-    
-    // Load cities when modal opens (if not already loaded or location changed)
-    const userLoc = this.userLocation || this.selectedLocation;
-    if (!this.citiesLoaded && userLoc) {
-      // Load cities within 300 miles of current location
-      this.loadCities(300);
-    } else if (!this.citiesLoaded && !userLoc) {
-      // No location yet, load all cities
-      this.loadCities(300, true);
-    } else {
-      // Cities already loaded, just update filtered list
-      this.filteredCities = [...this.cities];
-    }
+    this.filteredCities = [...this.cities];
   }
 
   /**
