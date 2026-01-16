@@ -113,8 +113,10 @@ admin.initializeApp();
 // API Configuration
 const API_BASE_URL = 'https://api.f3nation.com';
 // Get API key from environment config - REQUIRED, no default
-const API_KEY = functions.config().f3?.api_key || process.env.F3_API_KEY;
-const CLIENT_HEADER = functions.config().f3?.client || process.env.F3_CLIENT || 'f3nearme';
+// firebase functions:config:set f3.api_key="YOURAPIKEY"
+// firebase functions:config:set f3.client="f3nearme"
+const API_KEY = functions.config().f3?.api_key;
+const CLIENT_HEADER = functions.config().f3?.client || 'f3nearme';
 
 if (!API_KEY) {
   throw new Error('F3_API_KEY must be set via Firebase Functions config or environment variable');
