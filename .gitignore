@@ -32,3 +32,5 @@ npm-debug.log*
 /www
 *.cache
 functions/scripts/service-account.json
+functions/scripts/.env
+.env

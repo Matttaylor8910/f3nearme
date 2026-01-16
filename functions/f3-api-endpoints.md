@@ -1,151 +1,215 @@
 # F3 API Endpoints Documentation
 
-This document describes the two main endpoints used to fetch F3 workout location and event data.
+This document describes the F3 Nation API endpoints used to fetch workout location and event data.
 
-## 1. Get Map Event and Location Data
+## Authentication
 
-**Endpoint:** `https://map.f3nation.com/api/trpc/location.getMapEventAndLocationData`
+All API endpoints require authentication using a Bearer token and a client header:
 
-**Method:** GET
+- **Authorization Header:** `Bearer <API_KEY>`
+- **Client Header:** `client: f3nearme`
 
-**Description:** Returns a list of all F3 workout locations with their basic information and scheduled events.
+**Note:** You must obtain your API key from the F3 Nation API administrator. Do not commit API keys to version control.
 
-### Response Structure
+**Base URL:** `https://api.f3nation.com`
+
+## 1. Get All Events
+
+**Endpoint:** `GET /v1/event`
+
+**Description:** Returns a paginated list of all workout events with optional filtering and sorting.
+
+**Headers:**
+```
+Authorization: Bearer YOUR_API_KEY_HERE
+client: f3nearme
+```
+
+**Query Parameters (optional):**
+- `pageIndex`: number - Page number for pagination
+- `pageSize`: number - Number of items per page
+- `searchTerm`: string - Search term to filter events
+- `statuses`: array - Filter by status (`active`, `inactive`)
+- `sorting`: array - Sort configuration
+- `regionIds`: array - Filter by region IDs
+- `aoIds`: array - Filter by AO (Area of Operations) IDs
+- `onlyMine`: boolean - Filter to only user's events
+
+**Response Structure:**
 
 ```json
 {
-  "result": {
-    "data": {
-      "json": [
-        [
-          locationId,        // number
-          locationName,      // string
-          logoUrl,          // string (can be empty)
-          latitude,         // number
-          longitude,        // number
-          fullAddress,      // string
-          [                 // array of events
-            [
-              eventId,      // number
-              eventName,    // string
-              dayOfWeek,    // string (e.g., "monday", "wednesday")
-              startTime,    // string (e.g., "0515")
-              [             // array of event types
-                {
-                  "id": number,
-                  "name": string  // e.g., "Bootcamp", "Ruck"
-                }
-              ]
-            ]
-          ]
-        ]
-      ]
+  "events": [
+    {
+      "id": 51940,
+      "name": "The Stocks - Run Club",
+      "description": "Taking a ~5km run from Bramley Park on various routes.",
+      "isActive": true,
+      "isPrivate": false,
+      "parent": "The Stocks Run Club",
+      "locationId": 49961,
+      "startDate": "2026-01-16",
+      "dayOfWeek": "monday",
+      "startTime": "0600",
+      "endTime": "0645",
+      "email": null,
+      "created": "2026-01-16 10:09:38.286497",
+      "locationName": "",
+      "locationAddress": "Bramley Park",
+      "locationAddress2": "",
+      "locationCity": "Leeds",
+      "locationState": "West Yorkshire",
+      "locationZip": "LS13 3PG",
+      "parents": [
+        {
+          "parentId": 51146,
+          "parentName": "The Stocks Run Club"
+        }
+      ],
+      "regions": [
+        {
+          "regionId": 48372,
+          "regionName": "Yorkshire"
+        }
+      ],
+      "location": "Bramley Park, Leeds, West Yorkshire"
     }
+  ]
+}
+```
+
+**Note:** The event list endpoint does not include `eventTypes`. To get event types, you must fetch individual events using the event detail endpoint.
+
+## 2. Get Event by ID
+
+**Endpoint:** `GET /v1/event/id/{id}`
+
+**Description:** Returns detailed information about a specific event, including event types.
+
+**Response Structure:**
+
+```json
+{
+  "event": {
+    "id": 51940,
+    "name": "The Stocks - Run Club",
+    "description": "Taking a ~5km run from Bramley Park on various routes.",
+    "isActive": true,
+    "location": "The Stocks Run Club",
+    "locationId": 49961,
+    "startDate": "2026-01-16",
+    "dayOfWeek": "monday",
+    "startTime": "0600",
+    "endTime": "0645",
+    "email": null,
+    "highlight": false,
+    "created": "2026-01-16 10:09:38.286497",
+    "meta": null,
+    "isPrivate": false,
+    "aos": [
+      {
+        "aoId": 51146,
+        "aoName": "The Stocks Run Club"
+      }
+    ],
+    "regions": [
+      {
+        "regionId": 48372,
+        "regionName": "Yorkshire"
+      }
+    ],
+    "eventTypes": [
+      {
+        "eventTypeId": 2,
+        "eventTypeName": "Run"
+      }
+    ]
   }
 }
 ```
 
-## 2. Get Location Workout Data
+## 3. Get All Locations
 
-**Endpoint:** `https://map.f3nation.com/api/trpc/location.getLocationWorkoutData`
+**Endpoint:** `GET /v1/location`
 
-**Method:** GET
+**Description:** Returns a list of all workout locations.
 
-**Query Parameters:**
-- `input`: JSON object containing `locationId`
-  ```json
-  {
-    "json": {
-      "locationId": number
-    }
-  }
-  ```
-
-**Description:** Returns detailed information about a specific F3 workout location, including all events, contact information, and metadata.
-
-### Response Structure
+**Response Structure:**
 
 ```json
 {
-  "result": {
-    "data": {
-      "json": {
-        "location": {
-          "id": number,
-          "name": string,
-          "description": string | null,
-          "lat": number,
-          "lon": number,
-          "orgId": number,
-          "locationName": string,
-          "locationMeta": {
-            "latLonKey": string,
-            "address1": string,
-            "address2": string,
-            "city": string,
-            "state": string,
-            "postalCode": string,
-            "country": string,
-            "mapSeed": boolean
-          },
-          "locationAddress": string,
-          "locationAddress2": string,
-          "locationCity": string,
-          "locationState": string,
-          "locationZip": string,
-          "locationCountry": string,
-          "isActive": boolean,
-          "created": string,
-          "updated": string,
-          "locationDescription": string | null,
-          "parentId": number,
-          "parentLogo": string,
-          "parentName": string,
-          "parentWebsite": string,
-          "regionId": number,
-          "regionName": string,
-          "regionLogo": string | null,
-          "regionWebsite": string,
-          "regionType": string,
-          "fullAddress": string,
-          "events": [
-            {
-              "id": number,
-              "name": string,
-              "description": string,
-              "dayOfWeek": string,
-              "startTime": string,
-              "endTime": string,
-              "eventTypes": [
-                {
-                  "id": number,
-                  "name": string
-                }
-              ],
-              "aoId": number,
-              "aoLogo": string,
-              "aoWebsite": string,
-              "aoName": string
-            }
-          ]
-        }
-      }
+  "locations": [
+    {
+      "id": 50960,
+      "locationName": "Jeni's Ice Cream",
+      "regionId": 25124,
+      "regionName": "South Charlotte",
+      "description": "",
+      "isActive": true,
+      "latitude": 35.03469207897565,
+      "longitude": -80.80631701926951,
+      "email": "",
+      "addressStreet": "9828 Rea Rd",
+      "addressStreet2": null,
+      "addressCity": "Charlotte",
+      "addressState": "NC",
+      "addressZip": "28277",
+      "addressCountry": "US",
+      "meta": {},
+      "created": "2026-01-16 16:53:52.114009"
     }
+  ]
+}
+```
+
+## 4. Get Location by ID
+
+**Endpoint:** `GET /v1/location/id/{id}`
+
+**Description:** Returns detailed information about a specific location.
+
+**Response Structure:**
+
+```json
+{
+  "location": {
+    "id": 49961,
+    "locationName": "",
+    "description": "Meeting Point: Top of the hill, past children's playground.",
+    "isActive": true,
+    "created": "2025-05-29 10:46:38.665129",
+    "orgId": 48372,
+    "regionId": 48372,
+    "regionName": "Yorkshire",
+    "email": null,
+    "latitude": 53.811302,
+    "longitude": -1.6371671,
+    "addressStreet": "Bramley Park",
+    "addressStreet2": "",
+    "addressCity": "Leeds",
+    "addressState": "West Yorkshire",
+    "addressZip": "LS13 3PG",
+    "addressCountry": "United Kingdom",
+    "meta": null
   }
 }
 ```
 
 ## Usage Notes
 
-1. The first endpoint (`getMapEventAndLocationData`) should be used to get an overview of all locations and their basic event information.
-2. The second endpoint (`getLocationWorkoutData`) should be used to get detailed information about a specific location using its `locationId`.
-3. Event types typically include:
-   - Bootcamp (id: 1)
-   - Run (id: 2)
-   - Ruck (id: 3)
-   - QSource (id: 4)
-   - Bike (id: 7)
-   - Wild Card (id: 9)
+1. **Event Types:** Event types are only available when fetching individual events via `/v1/event/id/{id}`. The list endpoint (`/v1/event`) does not include event types.
+
+2. **Event Types typically include:**
+   - Bootcamp (eventTypeId: 1)
+   - Run (eventTypeId: 2)
+   - Ruck (eventTypeId: 3)
+   - QSource (eventTypeId: 4)
+   - Bike (eventTypeId: 7)
+   - Wild Card (eventTypeId: 9)
+
+3. **Location Coordinates:** Location latitude and longitude are available in the location endpoints, not in the event endpoints. You must fetch location details separately to get coordinates.
+
+4. **Address Information:** Events include basic address information (`locationAddress`, `locationCity`, `locationState`, `locationZip`, `location`), but for complete address details and coordinates, fetch the location separately.
 
 ## Frontend Data Structure
 
@@ -155,16 +219,16 @@ The frontend webapp expects the data to be transformed into a list of days, wher
 ```typescript
 interface Beatdown {
   dayOfWeek: string;      // e.g., "monday", "wednesday"
-  timeString: string;     // e.g., "0515", "0600"
+  timeString: string;     // e.g., "5:00 am - 6:00 am"
   type: string;          // e.g., "Bootcamp", "Ruck"
-  region: string;        // Region name from location data
-  website: string;       // Website URL from location data
+  region: string;        // Region name from event or location data
+  website: string;       // Website URL (currently empty, not provided by API)
   notes: string;         // Description from event data
-  name: string;          // Location name
+  name: string;          // Event name
   address: string;       // Full address
-  lat: number;          // Latitude
-  long: number;         // Longitude
-  milesFromMe: number;  // Calculated distance from user
+  lat: number;          // Latitude from location
+  long: number;         // Longitude from location
+  milesFromMe: number;  // Calculated distance from user (frontend only)
   eventId: number;      // ID of the event from the API
   locationId: number;   // ID of the location from the API
 }
@@ -184,30 +248,32 @@ interface Day {
 #### Backend Responsibilities
 The backend service should:
 
-1. Hit the `getMapEventAndLocationData` endpoint to get all locations
-2. For each location, call `getLocationWorkoutData` to get detailed information
-3. Transform the API response data into `Beatdown` objects with the following fields:
+1. Fetch all events using `GET /v1/event`
+2. Extract unique `locationId` values from events
+3. Fetch location details for each unique location using `GET /v1/location/id/{id}` to get coordinates
+4. For each event, optionally fetch individual event details using `GET /v1/event/id/{id}` to get event types
+5. Transform the API response data into `Beatdown` objects with the following fields:
    - `dayOfWeek`: from event's `dayOfWeek`
-   - `timeString`: from event's `startTime`
-   - `type`: from event's `eventTypes[0].name`
-   - `region`: from location's `regionName`
-   - `website`: from location's `parentWebsite`
+   - `timeString`: formatted from event's `startTime` and `endTime` (e.g., "5:00 am - 6:00 am")
+   - `type`: from event's `eventTypes[0].eventTypeName` (requires individual event fetch)
+   - `region`: from event's `regions[0].regionName` or location's `regionName`
+   - `website`: empty string (not provided by API)
    - `notes`: from event's `description`
-   - `name`: from location's `name`
-   - `address`: from location's `fullAddress`
-   - `lat`: from location's `lat`
-   - `long`: from location's `lon`
+   - `name`: from event's `name`
+   - `address`: from event's `location` string or constructed from address fields
+   - `lat`: from location's `latitude`
+   - `long`: from location's `longitude`
    - `eventId`: from event's `id`
-   - `locationId`: from location's `id`
-4. Store each `Beatdown` object in Firestore, using the location and event data as the document fields
+   - `locationId`: from event's `locationId`
+6. Store each `Beatdown` object in Firestore
 
 #### Frontend Responsibilities
 The frontend webapp (`nearby.page.ts`) should:
 
 1. Get the user's location using the browser's geolocation API
-2. Query Firestore for all beatdown documents where the location is within 100 miles of the user
+2. Query Firestore for beatdown documents
 3. For each beatdown:
-   - Calculate `milesFromMe` using the `distance()` function (as shown in `nearby.page.ts`)
+   - Calculate `milesFromMe` using the `distance()` function
    - Group beatdowns by day using the `dayOfWeek` field
    - Sort beatdowns by `milesFromMe` within each day
 4. Create `Day` objects:
@@ -216,26 +282,22 @@ The frontend webapp (`nearby.page.ts`) should:
    - Set the sorted `beatdowns` array
 5. Set the resulting array of `Day` objects to `this.days`
 
-The frontend code in `nearby.page.ts` already implements the necessary functions for:
-- Calculating distances (`distance()`)
-- Formatting dates (`getDateDisplay()`)
-- Grouping and sorting beatdowns
-- Handling user location
-- Managing the UI state 
+## Sync Script
 
-## Import Script
+The sync script (`sync-beatdowns.ts`) imports F3 workout data into Firestore. This script:
 
-A Node.js script (`import-beatdowns.ts`) is provided to import F3 workout data into Firestore. This script:
-
-1. Fetches all locations using `getMapEventAndLocationData`
-2. For each location, fetches detailed data using `getLocationWorkoutData`
-3. Transforms the data into `Beatdown` objects
-4. Stores the beatdowns in Firestore
+1. Fetches all events using `GET /v1/event`
+2. Extracts unique location IDs from events
+3. Fetches location details for each unique location using `GET /v1/location/id/{id}`
+4. Fetches individual event details for each event using `GET /v1/event/id/{id}` to get event types
+5. Transforms the data into `Beatdown` objects
+6. Stores the beatdowns in Firestore
 
 ### Setup
 
 1. Install dependencies:
    ```bash
+   cd functions/scripts
    npm install
    ```
 
@@ -249,17 +311,17 @@ A Node.js script (`import-beatdowns.ts`) is provided to import F3 workout data i
 
 ### Features
 
-- Processes locations in batches (10 at a time) to avoid rate limiting
-- Retries failed API requests (3 attempts with exponential backoff)
+- Processes events and locations in batches to avoid rate limiting
+- Fetches individual event details to get event types
 - Uses Firestore batch writes for efficient data storage
 - Handles errors gracefully, logging issues without stopping the entire import
 - TypeScript for type safety
 
 ### Error Handling
 
-- Failed API requests are retried up to 3 times
-- Individual location failures are logged but don't stop the entire import
-- The script will exit with an error code if the initial data fetch fails
+- Failed API requests are logged but don't stop the entire import
+- Individual event/location failures are logged with warnings
+- The script will exit with an error code if critical operations fail
 
 ### Output
 
@@ -268,16 +330,20 @@ The script creates documents in the `beatdowns` collection in Firestore with the
 ```typescript
 interface Beatdown {
   dayOfWeek: string;      // e.g., "monday", "wednesday"
-  timeString: string;     // e.g., "0515", "0600"
+  timeString: string;     // e.g., "5:00 am - 6:00 am"
   type: string;          // e.g., "Bootcamp", "Ruck"
   region: string;        // Region name
-  website: string;       // Website URL
+  website: string;       // Website URL (currently empty)
   notes: string;         // Description
-  name: string;          // Location name
+  name: string;          // Event name
   address: string;       // Full address
   lat: number;          // Latitude
   long: number;         // Longitude
   eventId: number;      // ID of the event from the API
   locationId: number;   // ID of the location from the API
 }
-``` 
+```
+
+## API Reference
+
+Full API documentation is available at: https://api.f3nation.com/docs

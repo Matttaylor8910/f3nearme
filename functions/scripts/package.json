@@ -5,6 +5,11 @@
   "main": "sync-beatdowns.ts",
   "scripts": {
     "start": "ts-node sync-beatdowns.ts",
+    "sync": "ts-node sync-beatdowns.ts",
+    "sync:dry-run": "ts-node sync-beatdowns.ts --dry-run",
+    "sync:no-cleanup": "ts-node sync-beatdowns.ts --no-cleanup",
+    "cleanup": "ts-node sync-beatdowns.ts --only-cleanup",
+    "cleanup:dry-run": "ts-node sync-beatdowns.ts --only-cleanup --dry-run",
     "analyze": "ts-node sync-beatdowns.ts --analyze"
   },
   "dependencies": {
@@ -15,7 +20,8 @@
   "devDependencies": {
     "@types/lodash": "^4.14.202",
     "@types/node": "^20.11.19",
+    "dotenv": "^17.2.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   }
-} 
+}

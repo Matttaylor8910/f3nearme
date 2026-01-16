@@ -22,66 +22,75 @@ interface MapWebhook {
   version: string;      // e.g. 1.0
 };
 
-interface EventType {
-  id: number;
-  name: string;
+// New API Types
+interface ApiEventType {
+  eventTypeId: number;
+  eventTypeName: string;
 }
 
-interface Event {
-  id: number;
-  name: string;
-  description: string;
-  dayOfWeek: string;
-  startTime: string;
-  endTime: string;
-  eventTypes: EventType[];
-  aoId: number;
-  aoLogo: string;
-  aoWebsite: string;
-  aoName: string;
-}
-
-interface LocationMeta {
-  latLonKey: string;
-  address1: string;
-  address2: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  country: string;
-  mapSeed: boolean;
-}
-
-interface Location {
+interface ApiEvent {
   id: number;
   name: string;
   description: string | null;
-  lat: number;
-  lon: number;
-  orgId: number;
+  isActive: boolean;
+  isPrivate: boolean;
+  parent: string;
+  locationId: number;
+  startDate: string;
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  email: string | null;
+  created: string;
   locationName: string;
-  locationMeta: LocationMeta;
-  locationAddress: string;
-  locationAddress2: string;
+  locationAddress: string | null;
+  locationAddress2: string | null;
   locationCity: string;
   locationState: string;
   locationZip: string;
-  locationCountry: string;
+  parents: Array<{
+    parentId: number;
+    parentName: string;
+  }>;
+  regions: Array<{
+    regionId: number;
+    regionName: string;
+  }>;
+  location: string; // Full address string
+  eventTypes?: ApiEventType[]; // Only in individual event fetch
+}
+
+interface ApiLocation {
+  id: number;
+  locationName: string;
+  description: string | null;
   isActive: boolean;
   created: string;
-  updated: string;
-  locationDescription: string | null;
-  parentId: number;
-  parentLogo: string;
-  parentName: string;
-  parentWebsite: string;
+  orgId: number;
   regionId: number;
   regionName: string;
-  regionLogo: string | null;
-  regionWebsite: string;
-  regionType: string;
-  fullAddress: string;
-  events: Event[];
+  email: string | null;
+  latitude: number;
+  longitude: number;
+  addressStreet: string | null;
+  addressStreet2: string | null;
+  addressCity: string;
+  addressState: string;
+  addressZip: string;
+  addressCountry: string | null;
+  meta: any;
+}
+
+interface EventResponse {
+  event: ApiEvent;
+}
+
+interface LocationResponse {
+  location: ApiLocation;
+}
+
+interface EventsResponse {
+  events: ApiEvent[];
 }
 
 interface Beatdown {
@@ -100,6 +109,21 @@ interface Beatdown {
 }
 
 admin.initializeApp();
+
+// API Configuration
+const API_BASE_URL = 'https://api.f3nation.com';
+// Get API key from environment config - REQUIRED, no default
+const API_KEY = functions.config().f3?.api_key || process.env.F3_API_KEY;
+const CLIENT_HEADER = functions.config().f3?.client || process.env.F3_CLIENT || 'f3nearme';
+
+if (!API_KEY) {
+  throw new Error('F3_API_KEY must be set via Firebase Functions config or environment variable');
+}
+
+const API_HEADERS = {
+  'Authorization': `Bearer ${API_KEY}`,
+  'client': CLIENT_HEADER
+};
 
 /**
  * Helper function to format military time to AM/PM
@@ -120,34 +144,45 @@ function formatTime(militaryTime: string | null | undefined): string {
 /**
  * Fetches location data from the F3 API
  */
-async function fetchLocationData(locationId: number): Promise<any> {
+async function fetchLocationData(locationId: number): Promise<{ location: ApiLocation; events: ApiEvent[] }> {
   const startTime = Date.now();
   console.log(`[API] Starting fetch for locationId: ${locationId}`);
   
   try {
-    const url = `https://map.f3nation.com/api/trpc/location.getLocationWorkoutData?input=${encodeURIComponent(
-      JSON.stringify({ json: { locationId } })
-    )}`;
-    console.log(`[API] Fetching URL: ${url}`);
+    // Fetch location details
+    const locationUrl = `${API_BASE_URL}/v1/location/id/${locationId}`;
+    console.log(`[API] Fetching location URL: ${locationUrl}`);
     
-    const response = await fetch(url);
-    const duration = Date.now() - startTime;
+    const locationResponse = await fetch(locationUrl, { headers: API_HEADERS });
+    const locationDuration = Date.now() - startTime;
     
-    console.log(`[API] Response received for locationId ${locationId}: status=${response.status}, duration=${duration}ms`);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    if (!locationResponse.ok) {
+      throw new Error(`HTTP ${locationResponse.status}: ${locationResponse.statusText}`);
     }
     
-    const data = await response.json();
-    console.log(`[API] Successfully parsed JSON for locationId ${locationId}, has location data: ${!!data?.result?.data?.json?.location}`);
+    const locationData: LocationResponse = await locationResponse.json();
+    const location = locationData.location;
+    console.log(`[API] Location ${locationId} fetched: name="${location.locationName}", active=${location.isActive}, duration=${locationDuration}ms`);
     
-    if (data?.result?.data?.json?.location) {
-      const location = data.result.data.json.location;
-      console.log(`[API] Location ${locationId} data: name="${location.name}", events=${location.events?.length || 0}, active=${location.isActive}`);
+    // Fetch all events and filter by locationId
+    const eventsUrl = `${API_BASE_URL}/v1/event`;
+    console.log(`[API] Fetching events URL: ${eventsUrl}`);
+    
+    const eventsResponse = await fetch(eventsUrl, { headers: API_HEADERS });
+    if (!eventsResponse.ok) {
+      throw new Error(`HTTP ${eventsResponse.status}: ${eventsResponse.statusText}`);
     }
     
-    return data;
+    const eventsData: EventsResponse = await eventsResponse.json();
+    const locationEvents = eventsData.events.filter(e => e.locationId === locationId);
+    
+    const totalDuration = Date.now() - startTime;
+    console.log(`[API] Found ${locationEvents.length} events for locationId ${locationId}, total duration=${totalDuration}ms`);
+    
+    return {
+      location,
+      events: locationEvents
+    };
   } catch (error) {
     const duration = Date.now() - startTime;
     console.error(`[API] Error fetching locationId ${locationId} after ${duration}ms:`, error);
@@ -156,21 +191,70 @@ async function fetchLocationData(locationId: number): Promise<any> {
 }
 
 /**
+ * Fetches a single event by eventId
+ */
+async function fetchEventData(eventId: number): Promise<ApiEvent> {
+  const startTime = Date.now();
+  console.log(`[API] Starting fetch for eventId: ${eventId}`);
+  
+  try {
+    const url = `${API_BASE_URL}/v1/event/id/${eventId}`;
+    console.log(`[API] Fetching event URL: ${url}`);
+    
+    const response = await fetch(url, { headers: API_HEADERS });
+    const duration = Date.now() - startTime;
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const data: EventResponse = await response.json();
+    const event = data.event;
+    console.log(`[API] Event ${eventId} fetched: name="${event.name}", duration=${duration}ms`);
+    
+    return event;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[API] Error fetching eventId ${eventId} after ${duration}ms:`, error);
+    throw error;
+  }
+}
+
+/**
  * Transforms API data into our Beatdown format
  */
-function transformToBeatdown(location: Location, event: Event): Beatdown {
+function transformToBeatdown(location: ApiLocation, event: ApiEvent): Beatdown {
+  // Get region name from event (preferred) or location
+  const regionName = event.regions?.[0]?.regionName || location.regionName || 'Unknown Region';
+  
+  // Get website from parents array (first parent's website if available)
+  // Note: API doesn't return website in event, so we'll use empty string for now
+  const website = '';
+  
+  // Build full address from event location string or location fields
+  const address = event.location || 
+    [event.locationAddress, event.locationAddress2, event.locationCity, event.locationState, event.locationZip]
+      .filter(Boolean)
+      .join(', ') ||
+    [location.addressStreet, location.addressStreet2, location.addressCity, location.addressState, location.addressZip]
+      .filter(Boolean)
+      .join(', ');
+  
+  // Get event type name
+  const eventType = event.eventTypes?.[0]?.eventTypeName || 'Unknown';
+  
   return {
     dayOfWeek: event.dayOfWeek,
     timeString: `${formatTime(event.startTime)} - ${formatTime(event.endTime)}`,
-    type: event.eventTypes[0]?.name || 'Unknown',
-    region: location.regionName,
-    website: location.parentWebsite,
+    type: eventType,
+    region: regionName,
+    website: website,
     notes: event.description || location.description || '',
-    name: event.name || location.name || location.parentName || '',
-    address: location.fullAddress,
-    lat: location.lat,
-    long: location.lon,
-    locationId: location.id,
+    name: event.name || event.locationName || location.locationName || '',
+    address: address,
+    lat: location.latitude,
+    long: location.longitude,
+    locationId: event.locationId,
     eventId: event.id
   };
 }
@@ -226,8 +310,7 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
   console.log(`[DB] Starting updateLocationBeatdowns for locationId: ${locationId}`);
   
   try {
-    const locationData = await fetchLocationData(locationId);
-    const location = locationData.result.data.json.location;
+    const { location, events } = await fetchLocationData(locationId);
 
     if (!location) {
       console.error(`[DB] No location data returned from API for locationId: ${locationId}`);
@@ -248,9 +331,22 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
       existingDocs.set(doc.id, doc);
     });
 
+    // Fetch individual event details to get event types
+    console.log(`[DB] Fetching event details for ${events.length} events`);
+    const eventsWithTypes: ApiEvent[] = [];
+    for (const event of events) {
+      try {
+        const eventDetail = await fetchEventData(event.id);
+        eventsWithTypes.push(eventDetail);
+      } catch (error) {
+        console.warn(`[DB] Failed to fetch event ${event.id} details, using basic event data:`, error);
+        eventsWithTypes.push(event); // Fallback to basic event data
+      }
+    }
+
     // Build the list of beatdowns to save and their docIds
-    console.log(`[DB] Processing ${location.events?.length || 0} events from API for locationId: ${locationId}`);
-    const beatdownsToSave: { docId: string, beatdown: Beatdown }[] = location.events.map((event: Event) => {
+    console.log(`[DB] Processing ${eventsWithTypes.length} events from API for locationId: ${locationId}`);
+    const beatdownsToSave: { docId: string, beatdown: Beatdown }[] = eventsWithTypes.map((event: ApiEvent) => {
       const beatdown = transformToBeatdown(location, event);
       const docId = generateBeatdownId(beatdown);
       console.log(`[DB] Transformed event ${event.id} ("${event.name}") to beatdown with docId: ${docId}`);
@@ -332,26 +428,25 @@ async function updateEventBeatdown(db: admin.firestore.Firestore, eventId: numbe
     const existingBeatdown = snapshot.docs[0].data() as Beatdown;
     console.log(`[DB] Found existing beatdown for eventId ${eventId}: locationId=${existingBeatdown.locationId}, docId=${snapshot.docs[0].id}`);
     
-    const locationData = await fetchLocationData(existingBeatdown.locationId);
-    const location = locationData.result.data.json.location;
+    // Fetch the event details (includes event types)
+    const event = await fetchEventData(eventId);
+    
+    // Fetch location details
+    const { location } = await fetchLocationData(existingBeatdown.locationId);
     
     if (!location) {
       console.error(`[DB] No location data returned for locationId ${existingBeatdown.locationId} when updating eventId ${eventId}`);
       return;
     }
-    
-    const event = location.events.find(
-      (e: Event) => e.id === eventId
-    );
 
-    if (event) {
-      console.log(`[DB] Found event ${eventId} ("${event.name}") in location data, updating beatdown`);
+    if (event && event.isActive) {
+      console.log(`[DB] Found active event ${eventId} ("${event.name}"), updating beatdown`);
       const beatdown = transformToBeatdown(location, event);
       await updateBeatdown(db, beatdown, existingBeatdown);
       const duration = Date.now() - startTime;
       console.log(`[DB] Successfully updated beatdown for eventId ${eventId} in ${duration}ms`);
     } else {
-      console.log(`[DB] Event ${eventId} no longer exists in location data, deleting beatdown`);
+      console.log(`[DB] Event ${eventId} no longer exists or is inactive, deleting beatdown`);
       await deleteBeatdownsByEvent(db, eventId);
       const duration = Date.now() - startTime;
       console.log(`[DB] Successfully deleted beatdown for eventId ${eventId} in ${duration}ms`);
@@ -484,30 +579,27 @@ export const adminGetAllLocationIds = functions.https.onCall(async (data) => {
   console.log(`[ADMIN] Get all location IDs callable request`);
 
   try {
-    console.log(`[ADMIN] Fetching all location data from F3 map API`);
+    console.log(`[ADMIN] Fetching all events from F3 API`);
     
-    const url = 'https://map.f3nation.com/api/trpc/location.getMapEventAndLocationData';
-    const response = await fetch(url);
+    const url = `${API_BASE_URL}/v1/event`;
+    const response = await fetch(url, { headers: API_HEADERS });
     
     if (!response.ok) {
       throw new functions.https.HttpsError('internal', `HTTP ${response.status}: ${response.statusText}`);
     }
     
-    const apiData = await response.json();
+    const apiData: EventsResponse = await response.json();
     
-    if (!apiData?.result?.data?.json || !Array.isArray(apiData.result.data.json)) {
+    if (!apiData?.events || !Array.isArray(apiData.events)) {
       throw new functions.https.HttpsError('internal', 'Invalid response format from F3 API');
     }
     
-    // Extract unique location IDs - first element of each location array
+    // Extract unique location IDs from events
     const uniqueLocationIds = new Set<number>();
     
-    apiData.result.data.json.forEach((locationArray: any[]) => {
-      if (Array.isArray(locationArray) && locationArray.length > 0) {
-        const locationId = locationArray[0];
-        if (typeof locationId === 'number') {
-          uniqueLocationIds.add(locationId);
-        }
+    apiData.events.forEach((event: ApiEvent) => {
+      if (event.locationId && typeof event.locationId === 'number') {
+        uniqueLocationIds.add(event.locationId);
       }
     });
     

@@ -19,25 +19,72 @@ This script imports F3 workout location and event data from the F3 Nation API in
    - Place your Firebase Admin SDK service account key JSON file in the `functions/scripts` directory
    - Rename it to `service-account.json`
 
+3. Set up API credentials (required):
+   - Copy `.env.example` to `.env`:
+     ```bash
+     cp .env.example .env
+     ```
+   - Edit `.env` and add your F3 Nation API key:
+     ```
+     F3_API_KEY=your_api_key_here
+     F3_CLIENT=f3nearme
+     ```
+   - The `.env` file is gitignored and will not be committed
+   - Alternatively, you can set environment variables:
+     ```bash
+     export F3_API_KEY="your_api_key_here"
+     export F3_CLIENT="f3nearme"
+     ```
+
 ## Usage
 
-### Basic Import
-Run the import script:
+### Dry Run (Recommended First)
+Test the sync without making any changes to Firestore:
+```bash
+npm run sync:dry-run
+```
+This will:
+- Fetch all events and locations from the API
+- Show what would be created, updated, or deleted
+- Display statistics without making any changes
+- Help you verify the sync will work correctly
+
+### Full Sync
+Run the actual sync to import/update beatdowns:
+```bash
+npm run sync
+```
+or
 ```bash
 npm start
 ```
 
-### Analysis Mode with Updates
-To perform the import while also showing detailed analysis of changes:
+### Cleanup Only Mode
+To only delete beatdowns that no longer exist in the API (without syncing):
 ```bash
-npm start -- --analyze
+npm run cleanup
+```
+or with dry run:
+```bash
+npm run cleanup:dry-run
+```
+This will:
+- Fetch all events and locations from the API
+- Generate valid beatdown IDs from current API data
+- Compare with existing beatdowns in Firestore
+- Delete only the beatdowns that no longer exist in the API
+- **Does not** create or update any beatdowns
+
+### Analysis Mode
+To analyze location changes without performing a full sync:
+```bash
+npm run analyze
 ```
 This will:
 - Compare existing locations in the database with the API
 - Show which locations have been added or deleted
 - Display statistics about new and updated beatdowns
-- Perform the import of the new and updated locations and update the database
-- Provide more detailed logging of the changes being made
+- Only process new locations (not a full sync)
 
 ### Cleanup Mode
 The script includes an optional cleanup feature that can be enabled by setting `OPTIONAL_CLEANUP = true` in the script. When enabled, it will:
