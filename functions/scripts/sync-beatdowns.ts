@@ -241,10 +241,22 @@ function transformEventToBeatdown(event: ApiEvent, location: ApiLocation): Beatd
 }
 
 // Helper function to generate a consistent document ID
+// IMPORTANT: Must include eventId to handle multiple events per location/day
+// Otherwise, events at the same location on the same day will overwrite each other
+// Using eventId ensures each event gets a unique, stable document ID
 function generateBeatdownId(beatdown: Beatdown): string {
-  // Create ID using region name, beatdown name, and day
-  const baseString = `${beatdown.region}_${beatdown.name}_${beatdown.dayOfWeek}`;
+  // Create ID using region name, beatdown name, day, and eventId
+  // This ensures multiple events at the same location on the same day get unique IDs
+  // eventId is stable and unique per event, so it's the best identifier
+  const baseString = `${beatdown.region}_${beatdown.name}_${beatdown.dayOfWeek}_${beatdown.eventId}`;
   // Convert to lowercase and replace spaces/special chars with hyphens
+  return baseString.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+
+// Helper function to generate the OLD document ID format (for backward compatibility during migration)
+// This was the original format that didn't include eventId
+function generateOldBeatdownId(beatdown: Beatdown): string {
+  const baseString = `${beatdown.region}_${beatdown.name}_${beatdown.dayOfWeek}`;
   return baseString.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 }
 
@@ -526,53 +538,298 @@ async function main() {
       }
       console.log(`Transformed ${beatdowns.length} beatdowns`);
 
-      // Write to Firestore in batches (or simulate in dry run)
-      const beatdownBatches = chunk(beatdowns, BATCH_SIZE);
+      // Helper function to normalize values for comparison
+      function normalizeValue(val: any): any {
+        if (val === null || val === undefined) return '';
+        if (typeof val === 'number') {
+          // For integers (locationId, eventId), compare as integers
+          if (Number.isInteger(val)) {
+            return val;
+          }
+          // For floats (lat, long), round to 5 decimal places (~1.1 meters precision)
+          // This helps handle API inconsistencies where coordinates bounce slightly
+          return Math.round(val * 100000) / 100000;
+        }
+        // Convert to string and trim for string comparison
+        return String(val).trim();
+      }
       
-      for (const [batchIndex, beatdownBatch] of beatdownBatches.entries()) {
-        if (isDryRun) {
-          console.log(`[DRY RUN] Would write batch ${batchIndex + 1}/${beatdownBatches.length} (${beatdownBatch.length} beatdowns)`);
-        } else {
-          console.log(`Writing batch ${batchIndex + 1}/${beatdownBatches.length} (${beatdownBatch.length} beatdowns)`);
+      // Helper function to check if two coordinates are effectively the same
+      // (within ~10 meters, which accounts for API precision issues)
+      function coordinatesAreEqual(lat1: number, long1: number, lat2: number, long2: number): boolean {
+        const normalizedLat1 = normalizeValue(lat1);
+        const normalizedLong1 = normalizeValue(long1);
+        const normalizedLat2 = normalizeValue(lat2);
+        const normalizedLong2 = normalizeValue(long2);
+        
+        // If normalized values match, they're equal
+        if (normalizedLat1 === normalizedLat2 && normalizedLong1 === normalizedLong2) {
+          return true;
         }
         
-        if (!isDryRun) {
-          const batch = db.batch();
-          
-          for (const beatdown of beatdownBatch) {
-            const docId = generateBeatdownId(beatdown);
-            const docRef = db.collection('beatdowns').doc(docId);
-            processedIds.add(docId); // Track all processed IDs for cleanup detection
-            
-            // Check if document exists
-            const doc = await docRef.get();
-            if (doc.exists) {
-              updatedBeatdowns++;
-            } else {
-              newBeatdowns++;
-            }
-            
-            batch.set(docRef, beatdown);
-          }
+        // Calculate distance in meters (Haversine formula approximation for small distances)
+        // 1 degree latitude ≈ 111,000 meters
+        // 1 degree longitude ≈ 111,000 * cos(latitude) meters
+        const latDiff = Math.abs(lat1 - lat2) * 111000;
+        const longDiff = Math.abs(long1 - long2) * 111000 * Math.cos((lat1 + lat2) / 2 * Math.PI / 180);
+        const distance = Math.sqrt(latDiff * latDiff + longDiff * longDiff);
+        
+        // Consider coordinates equal if within 10 meters (accounts for API precision issues)
+        return distance < 10;
+      }
 
-          await batch.commit();
-        } else {
-          // In dry run, just simulate the checks (still need to track processedIds for cleanup detection)
-          for (const beatdown of beatdownBatch) {
-            const docId = generateBeatdownId(beatdown);
-            processedIds.add(docId); // Track all processed IDs for cleanup detection
-            
-            // Check if document exists
-            const doc = await db.collection('beatdowns').doc(docId).get();
-            if (doc.exists) {
-              updatedBeatdowns++;
-            } else {
-              newBeatdowns++;
+      // Helper function to compare beatdowns and check if they're different
+      // We compare user-visible fields first. If those are the same, we consider them equal
+      // even if IDs changed, because IDs are just metadata and the API might recreate events
+      // with new IDs for the same logical beatdown.
+      function beatdownsAreEqual(bd1: Beatdown, bd2: Beatdown): boolean {
+        // Compare all user-visible fields (everything except IDs)
+        // Use special coordinate comparison to handle API precision issues
+        return (
+          normalizeValue(bd1.dayOfWeek) === normalizeValue(bd2.dayOfWeek) &&
+          normalizeValue(bd1.timeString) === normalizeValue(bd2.timeString) &&
+          normalizeValue(bd1.type) === normalizeValue(bd2.type) &&
+          normalizeValue(bd1.region) === normalizeValue(bd2.region) &&
+          normalizeValue(bd1.website) === normalizeValue(bd2.website) &&
+          normalizeValue(bd1.notes) === normalizeValue(bd2.notes) &&
+          normalizeValue(bd1.name) === normalizeValue(bd2.name) &&
+          normalizeValue(bd1.address) === normalizeValue(bd2.address) &&
+          coordinatesAreEqual(bd1.lat, bd1.long, bd2.lat, bd2.long)
+        );
+        // Note: We intentionally don't compare locationId and eventId here because:
+        // 1. These are metadata fields that don't affect the user experience
+        // 2. The API may recreate events with new IDs for the same logical beatdown
+        // 3. If only IDs change, we don't want to trigger unnecessary updates
+        // However, we still write the IDs when updating, so they'll be current
+      }
+
+      // Process beatdowns and only write those that need changes
+      console.log('Comparing beatdowns with existing data to find changes...');
+      const beatdownsToWrite: Beatdown[] = [];
+      let skippedUnchanged = 0;
+      let migrationsCount = 0;
+      const debugMode = process.argv.includes('--debug');
+      const changedFields: Map<string, string[]> = new Map(); // Track which fields changed for debugging
+      const changedDetails: Map<string, any> = new Map(); // Track full details for debug mode
+      
+      for (const beatdown of beatdowns) {
+        const docId = generateBeatdownId(beatdown);
+        processedIds.add(docId); // Track all processed IDs for cleanup detection
+        
+        // Try new ID format first, then fall back to old format for migration
+        let existingBeatdown = existingBeatdowns.get(docId) as Beatdown | undefined;
+        let oldDocId: string | undefined;
+        let needsMigration = false;
+        
+        if (!existingBeatdown) {
+          // Try old ID format (for backward compatibility during migration)
+          oldDocId = generateOldBeatdownId(beatdown);
+          const oldBeatdown = existingBeatdowns.get(oldDocId) as Beatdown | undefined;
+          
+            if (oldBeatdown) {
+              // Found document with old ID format - check if it's the same event
+              if (oldBeatdown.eventId === beatdown.eventId) {
+                // Same event, just needs ID migration - we'll write with new ID
+                existingBeatdown = oldBeatdown;
+                needsMigration = true;
+                migrationsCount++;
+                processedIds.add(oldDocId); // Mark old ID as processed so it gets cleaned up
+              } else {
+                // Different eventId - this is a collision! The old format had multiple events
+                // with the same ID. We need to create a new document with the new ID.
+                // The old document will be left as-is (or could be deleted if we want)
+              }
             }
-          }
         }
         
-        totalBeatdowns += beatdownBatch.length;
+        if (!existingBeatdown) {
+          // New beatdown - needs to be added
+          beatdownsToWrite.push(beatdown);
+          newBeatdowns++;
+        } else if (needsMigration || !beatdownsAreEqual(existingBeatdown, beatdown)) {
+          // Existing beatdown has changed - needs to be updated
+          beatdownsToWrite.push(beatdown);
+          updatedBeatdowns++;
+          
+          // Track which fields changed (always, not just in debug mode)
+          const fields: string[] = [];
+          const details: any = {
+            docId: docId,
+            firestore: {} as any,
+            api: {} as any
+          };
+          
+          if (normalizeValue(existingBeatdown.dayOfWeek) !== normalizeValue(beatdown.dayOfWeek)) {
+            fields.push(`dayOfWeek`);
+            if (debugMode) {
+              details.firestore.dayOfWeek = existingBeatdown.dayOfWeek;
+              details.api.dayOfWeek = beatdown.dayOfWeek;
+            }
+          }
+          if (normalizeValue(existingBeatdown.timeString) !== normalizeValue(beatdown.timeString)) {
+            fields.push(`timeString`);
+            if (debugMode) {
+              details.firestore.timeString = existingBeatdown.timeString;
+              details.api.timeString = beatdown.timeString;
+            }
+          }
+          if (normalizeValue(existingBeatdown.type) !== normalizeValue(beatdown.type)) {
+            fields.push(`type`);
+            if (debugMode) {
+              details.firestore.type = existingBeatdown.type;
+              details.api.type = beatdown.type;
+            }
+          }
+          if (normalizeValue(existingBeatdown.region) !== normalizeValue(beatdown.region)) {
+            fields.push(`region`);
+            if (debugMode) {
+              details.firestore.region = existingBeatdown.region;
+              details.api.region = beatdown.region;
+            }
+          }
+          if (normalizeValue(existingBeatdown.website) !== normalizeValue(beatdown.website)) {
+            fields.push(`website`);
+            if (debugMode) {
+              details.firestore.website = existingBeatdown.website;
+              details.api.website = beatdown.website;
+            }
+          }
+          if (normalizeValue(existingBeatdown.notes) !== normalizeValue(beatdown.notes)) {
+            fields.push(`notes`);
+            if (debugMode) {
+              details.firestore.notes = existingBeatdown.notes;
+              details.api.notes = beatdown.notes;
+            }
+          }
+          if (normalizeValue(existingBeatdown.name) !== normalizeValue(beatdown.name)) {
+            fields.push(`name`);
+            if (debugMode) {
+              details.firestore.name = existingBeatdown.name;
+              details.api.name = beatdown.name;
+            }
+          }
+          if (normalizeValue(existingBeatdown.address) !== normalizeValue(beatdown.address)) {
+            fields.push(`address`);
+            if (debugMode) {
+              details.firestore.address = existingBeatdown.address;
+              details.api.address = beatdown.address;
+            }
+          }
+          if (!coordinatesAreEqual(existingBeatdown.lat, existingBeatdown.long, beatdown.lat, beatdown.long)) {
+            fields.push(`coordinates`);
+            if (debugMode) {
+              details.firestore.lat = existingBeatdown.lat;
+              details.firestore.long = existingBeatdown.long;
+              details.api.lat = beatdown.lat;
+              details.api.long = beatdown.long;
+            }
+          }
+          if (normalizeValue(existingBeatdown.locationId) !== normalizeValue(beatdown.locationId)) {
+            fields.push(`locationId`);
+            if (debugMode) {
+              details.firestore.locationId = existingBeatdown.locationId;
+              details.api.locationId = beatdown.locationId;
+            }
+          }
+          if (normalizeValue(existingBeatdown.eventId) !== normalizeValue(beatdown.eventId)) {
+            fields.push(`eventId`);
+            if (debugMode) {
+              details.firestore.eventId = existingBeatdown.eventId;
+              details.api.eventId = beatdown.eventId;
+            }
+          }
+          
+          changedFields.set(docId, fields);
+          if (debugMode && Object.keys(details.firestore).length > 0) {
+            changedDetails.set(docId, details);
+          }
+        } else {
+          // Beatdown is unchanged - skip writing
+          skippedUnchanged++;
+        }
+        
+        totalBeatdowns++;
+      }
+      
+      if (migrationsCount > 0) {
+        console.log(`Found ${beatdownsToWrite.length} beatdowns that need changes (${newBeatdowns} new, ${updatedBeatdowns} updated, ${skippedUnchanged} unchanged)`);
+        console.log(`📦 Migration: ${migrationsCount} beatdowns will be migrated from old ID format (without eventId) to new format (with eventId)`);
+      } else {
+        console.log(`Found ${beatdownsToWrite.length} beatdowns that need changes (${newBeatdowns} new, ${updatedBeatdowns} updated, ${skippedUnchanged} unchanged)`);
+      }
+      
+      // Note: If you see the same number of updates after running sync, it's likely because:
+      // 1. The API is returning inconsistent data between calls (coordinates, notes, etc. may vary)
+      // 2. Events may be updated in real-time in the API
+      // 3. The comparison logic is working correctly - it's detecting actual differences in the API data
+      
+      if (changedFields.size > 0) {
+        // Always print the list of IDs that would be updated
+        console.log(`\n  📋 Beatdowns that would be updated (${changedFields.size} total):`);
+        Array.from(changedFields.keys()).forEach((docId, idx) => {
+          const fields = changedFields.get(docId) || [];
+          console.log(`    ${idx + 1}. ${docId} (${fields.join(', ')})`);
+        });
+        
+        if (debugMode) {
+          // In debug mode, also print detailed comparison
+          console.log(`\n  📊 Detailed comparison:`);
+          Array.from(changedFields.entries()).forEach(([docId, fields]) => {
+            console.log(`\n  📍 ${docId}`);
+            console.log(`     Changed fields: ${fields.join(', ')}`);
+            
+            const details = changedDetails.get(docId);
+            if (details) {
+              console.log(`     Firestore values:`);
+              Object.entries(details.firestore).forEach(([key, value]) => {
+                const strValue = typeof value === 'string' && value.length > 100 
+                  ? value.substring(0, 100) + '...' 
+                  : JSON.stringify(value);
+                console.log(`       ${key}: ${strValue}`);
+              });
+              console.log(`     API values:`);
+              Object.entries(details.api).forEach(([key, value]) => {
+                const strValue = typeof value === 'string' && value.length > 100 
+                  ? value.substring(0, 100) + '...' 
+                  : JSON.stringify(value);
+                console.log(`       ${key}: ${strValue}`);
+              });
+            }
+          });
+        } else {
+          console.log(`\n  💡 Run with --debug flag to see detailed comparison of values`);
+        }
+        
+        console.log(`\n  💡 To check a specific beatdown:`);
+        console.log(`     Firestore: db.collection('beatdowns').doc('DOC_ID').get()`);
+        console.log(`     API: Look for eventId or locationId in the API response`);
+      }
+
+      // Write only changed beatdowns to Firestore in batches
+      if (beatdownsToWrite.length > 0) {
+        const beatdownBatches = chunk(beatdownsToWrite, BATCH_SIZE);
+        
+        for (const [batchIndex, beatdownBatch] of beatdownBatches.entries()) {
+          if (isDryRun) {
+            console.log(`[DRY RUN] Would write batch ${batchIndex + 1}/${beatdownBatches.length} (${beatdownBatch.length} beatdowns)`);
+          } else {
+            console.log(`Writing batch ${batchIndex + 1}/${beatdownBatches.length} (${beatdownBatch.length} beatdowns)`);
+          }
+          
+          if (!isDryRun) {
+            const batch = db.batch();
+            
+            for (const beatdown of beatdownBatch) {
+              const docId = generateBeatdownId(beatdown);
+              const docRef = db.collection('beatdowns').doc(docId);
+              batch.set(docRef, beatdown, { merge: true });
+            }
+
+            await batch.commit();
+          }
+        }
+      } else {
+        console.log('No beatdowns need to be written - all are up to date');
       }
     }
 

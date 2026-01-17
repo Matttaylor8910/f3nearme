@@ -263,12 +263,17 @@ function transformToBeatdown(location: ApiLocation, event: ApiEvent): Beatdown {
 
 /**
  * Helper function to generate a consistent document ID
+ * IMPORTANT: Must include eventId to handle multiple events per location/day
+ * Otherwise, events at the same location on the same day will overwrite each other
+ * Using eventId ensures each event gets a unique, stable document ID
  */
 function generateBeatdownId(beatdown: Beatdown): string {
-  // Create ID using region name, beatdown name, and day
-  const baseString = `${beatdown.region}_${beatdown.name}_${beatdown.dayOfWeek}`;
+  // Create ID using region name, beatdown name, day, and eventId
+  // This ensures multiple events at the same location on the same day get unique IDs
+  // eventId is stable and unique per event, so it's the best identifier
+  const baseString = `${beatdown.region}_${beatdown.name}_${beatdown.dayOfWeek}_${beatdown.eventId}`;
   // Convert to lowercase and replace spaces/special chars with hyphens
-  return baseString.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  return baseString.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
 
 /**
@@ -276,16 +281,17 @@ function generateBeatdownId(beatdown: Beatdown): string {
  */
 async function updateBeatdown(db: admin.firestore.Firestore, beatdown: Beatdown, existingBeatdown: Beatdown): Promise<void> {
   const docId = generateBeatdownId(beatdown);
-  const existingDocId = generateBeatdownId(existingBeatdown);
+  const existingId = generateBeatdownId(existingBeatdown);
 
-  // If the existing beatdown doesn't have the same docId, we need to delete the existing document
-  if (existingDocId !== docId) {
+  // If the ID changed, delete the old document
+  if (existingId !== docId) {
+    console.log(`[DB] Beatdown ID changed from ${existingId} to ${docId}, deleting old document`);
     await db.collection('beatdowns')
-      .doc(existingDocId)
+      .doc(existingId)
       .delete();
   }
 
-  // Save this beatdown
+  // Save this beatdown with the new ID
   await db.collection('beatdowns')
       .doc(docId)
       .set(beatdown, { merge: true });
