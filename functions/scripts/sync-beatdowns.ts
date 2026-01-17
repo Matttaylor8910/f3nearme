@@ -106,6 +106,9 @@ interface Beatdown {
   long: number;
   locationId: number;
   eventId: number;
+  lastUpdated?: admin.firestore.FieldValue | admin.firestore.Timestamp | Date;
+  deleted?: boolean;
+  deletedAt?: admin.firestore.FieldValue | admin.firestore.Timestamp | Date;
 }
 
 // Constants
@@ -743,10 +746,14 @@ async function main() {
           if (debugMode && Object.keys(details.firestore).length > 0) {
             changedDetails.set(docId, details);
           }
-        } else {
-          // Beatdown is unchanged - skip writing
-          skippedUnchanged++;
-        }
+        } else if (!existingBeatdown.lastUpdated) {
+            // Beatdown is unchanged but missing lastUpdated field - add it for migration
+            beatdownsToWrite.push(beatdown);
+            updatedBeatdowns++;
+          } else {
+            // Beatdown is unchanged and has lastUpdated - skip writing
+            skippedUnchanged++;
+          }
         
         totalBeatdowns++;
       }
@@ -822,7 +829,10 @@ async function main() {
             for (const beatdown of beatdownBatch) {
               const docId = generateBeatdownId(beatdown);
               const docRef = db.collection('beatdowns').doc(docId);
-              batch.set(docRef, beatdown, { merge: true });
+              batch.set(docRef, {
+                ...beatdown,
+                lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+              }, { merge: true });
             }
 
             await batch.commit();
@@ -839,14 +849,14 @@ async function main() {
       
       if (isDryRun) {
         if (docsToDelete.length > 0) {
-          console.log(`\n[DRY RUN] Would delete ${docsToDelete.length} beatdowns (no longer exist in API)`);
-          console.log(`[DRY RUN] Sample IDs that would be deleted (first 10):`);
+          console.log(`\n[DRY RUN] Would soft delete ${docsToDelete.length} beatdowns (no longer exist in API)`);
+          console.log(`[DRY RUN] Sample IDs that would be soft deleted (first 10):`);
           docsToDelete.slice(0, 10).forEach(id => console.log(`  - ${id}`));
           if (docsToDelete.length > 10) {
             console.log(`  ... and ${docsToDelete.length - 10} more`);
           }
         } else {
-          console.log(`\n[DRY RUN] No beatdowns would be deleted (all existing beatdowns are still valid)`);
+          console.log(`\n[DRY RUN] No beatdowns would be soft deleted (all existing beatdowns are still valid)`);
         }
       } else {
         if (docsToDelete.length > 0) {
@@ -856,14 +866,19 @@ async function main() {
           const deleteBatches = chunk(docsToDelete, BATCH_SIZE);
           
           for (const [deleteBatchIndex, deleteBatch] of deleteBatches.entries()) {
-            console.log(`Deleting batch ${deleteBatchIndex + 1}/${deleteBatches.length} (${deleteBatch.length} documents)`);
+            console.log(`Soft deleting batch ${deleteBatchIndex + 1}/${deleteBatches.length} (${deleteBatch.length} documents)`);
             const batch = db.batch();
             deleteBatch.forEach(docId => {
-              batch.delete(db.collection('beatdowns').doc(docId));
+              const docRef = db.collection('beatdowns').doc(docId);
+              batch.update(docRef, {
+                deleted: true,
+                deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+                lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+              });
             });
             await batch.commit();
           }
-          console.log(`✅ Successfully deleted ${docsToDelete.length} beatdowns that no longer exist in the API`);
+          console.log(`✅ Successfully soft deleted ${docsToDelete.length} beatdowns that no longer exist in the API`);
         } else {
           console.log('\n✅ No beatdowns to delete - all existing beatdowns are still valid');
         }

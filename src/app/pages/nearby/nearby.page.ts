@@ -15,6 +15,9 @@ export interface Beatdown {
   lat: number;
   long: number;
   milesFromMe: number;
+  lastUpdated?: Date;
+  deleted?: boolean;
+  deletedAt?: Date;
 }
 
 interface Day {
@@ -109,7 +112,6 @@ export class NearbyPage {
   ) {}
 
   ngOnInit() {
-    this.loadFromCache();
     this.setMyLocation();
     this.loadBeatdowns();
   }
@@ -136,13 +138,15 @@ export class NearbyPage {
     this.beatdownService.getNearbyBeatdowns().subscribe({
       next: (beatdowns) => {
         this.allBDs = beatdowns;
-        this.saveToCache();
         this.extractCities();
         this.setNearbyBeatdowns();
       },
       error: (error) => {
         console.error('Error loading beatdowns:', error);
-        this.loadFromCache();
+        // On error, clear beatdowns and show empty state
+        this.allBDs = [];
+        this.extractCities();
+        this.setNearbyBeatdowns();
       }
     });
   }
@@ -425,26 +429,8 @@ export class NearbyPage {
     return Number(localStorage.getItem('miles') || DEFAULT_LIMIT);
   }
 
-  /**
-   * Persist the beatdown data to localStorage to recover later for a quick load
-   * while we wait on the API
-   */
-  saveToCache() {
-    try {
-      localStorage.setItem('bds', JSON.stringify(this.allBDs || []));
-    } catch (_e) {
-      // Do nothing with the error for now, it's not a big deal that the data
-      // doesn't get persisted
-      localStorage.removeItem('bds');
-    }
-  }
 
-  /**
-   * Load the bds from cache and set up the rest of the app
-   */
-  loadFromCache() {
-    this.allBDs = JSON.parse(localStorage.getItem('bds') || 'null');
-  }
+
 
   /**
    * Returns the URL to a help article for enabling location services based on

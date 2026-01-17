@@ -106,6 +106,9 @@ interface Beatdown {
   long: number;
   locationId: number;
   eventId: number;
+  lastUpdated?: admin.firestore.FieldValue | admin.firestore.Timestamp | Date;
+  deleted?: boolean;
+  deletedAt?: admin.firestore.FieldValue | admin.firestore.Timestamp | Date;
 }
 
 admin.initializeApp();
@@ -283,18 +286,25 @@ async function updateBeatdown(db: admin.firestore.Firestore, beatdown: Beatdown,
   const docId = generateBeatdownId(beatdown);
   const existingId = generateBeatdownId(existingBeatdown);
 
-  // If the ID changed, delete the old document
+  // If the ID changed, soft delete the old document
   if (existingId !== docId) {
-    console.log(`[DB] Beatdown ID changed from ${existingId} to ${docId}, deleting old document`);
+    console.log(`[DB] Beatdown ID changed from ${existingId} to ${docId}, soft deleting old document`);
     await db.collection('beatdowns')
       .doc(existingId)
-      .delete();
+      .update({
+        deleted: true,
+        deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+      });
   }
 
-  // Save this beatdown with the new ID
+  // Save this beatdown with the new ID, setting lastUpdated
   await db.collection('beatdowns')
       .doc(docId)
-      .set(beatdown, { merge: true });
+      .set({
+        ...beatdown,
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
 }
 
 const BATCH_SIZE = 500; // Firestore batch write limit
@@ -376,7 +386,10 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
       const writeBatch = db.batch();
       for (const { docId, beatdown } of batch) {
         const docRef = db.collection('beatdowns').doc(docId);
-        writeBatch.set(docRef, beatdown, { merge: true });
+        writeBatch.set(docRef, {
+          ...beatdown,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
       }
       await writeBatch.commit();
       console.log(`[DB] Committed save batch ${i + 1}/${saveBatches.length}`);
@@ -390,17 +403,21 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
     
     const deleteBatches = chunkArray(docsToDelete, BATCH_SIZE);
     if (deleteBatches.length > 0) {
-      console.log(`[DB] Deleting ${docsToDelete.length} beatdowns in ${deleteBatches.length} batches for locationId: ${locationId}`);
+      console.log(`[DB] Soft deleting ${docsToDelete.length} beatdowns in ${deleteBatches.length} batches for locationId: ${locationId}`);
       
       for (let i = 0; i < deleteBatches.length; i++) {
         const batch = deleteBatches[i];
-        console.log(`[DB] Processing delete batch ${i + 1}/${deleteBatches.length} with ${batch.length} items`);
+        console.log(`[DB] Processing soft delete batch ${i + 1}/${deleteBatches.length} with ${batch.length} items`);
         const writeBatch = db.batch();
         for (const doc of batch) {
-          writeBatch.delete(doc.ref);
+          writeBatch.update(doc.ref, {
+            deleted: true,
+            deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+          });
         }
         await writeBatch.commit();
-        console.log(`[DB] Committed delete batch ${i + 1}/${deleteBatches.length}`);
+        console.log(`[DB] Committed soft delete batch ${i + 1}/${deleteBatches.length}`);
       }
     }
     
@@ -486,18 +503,22 @@ async function deleteBeatdownsByLocation(db: admin.firestore.Firestore, location
     }
     
     const batches = chunkArray(snapshot.docs, BATCH_SIZE);
-    console.log(`[DB] Deleting ${snapshot.docs.length} beatdowns in ${batches.length} batches for locationId: ${locationId}`);
+    console.log(`[DB] Soft deleting ${snapshot.docs.length} beatdowns in ${batches.length} batches for locationId: ${locationId}`);
     
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
-      console.log(`[DB] Processing delete batch ${i + 1}/${batches.length} with ${batch.length} items`);
+      console.log(`[DB] Processing soft delete batch ${i + 1}/${batches.length} with ${batch.length} items`);
       const writeBatch = db.batch();
       batch.forEach(doc => {
-        console.log(`[DB] Marking doc ${doc.id} for deletion`);
-        writeBatch.delete(doc.ref);
+        console.log(`[DB] Marking doc ${doc.id} for soft deletion`);
+        writeBatch.update(doc.ref, {
+          deleted: true,
+          deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        });
       });
       await writeBatch.commit();
-      console.log(`[DB] Committed delete batch ${i + 1}/${batches.length}`);
+      console.log(`[DB] Committed soft delete batch ${i + 1}/${batches.length}`);
     }
     
     const duration = Date.now() - startTime;
@@ -529,18 +550,22 @@ async function deleteBeatdownsByEvent(db: admin.firestore.Firestore, eventId: nu
     }
     
     const batches = chunkArray(snapshot.docs, BATCH_SIZE);
-    console.log(`[DB] Deleting ${snapshot.docs.length} beatdowns in ${batches.length} batches for eventId: ${eventId}`);
+    console.log(`[DB] Soft deleting ${snapshot.docs.length} beatdowns in ${batches.length} batches for eventId: ${eventId}`);
     
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
-      console.log(`[DB] Processing delete batch ${i + 1}/${batches.length} with ${batch.length} items`);
+      console.log(`[DB] Processing soft delete batch ${i + 1}/${batches.length} with ${batch.length} items`);
       const writeBatch = db.batch();
       batch.forEach(doc => {
-        console.log(`[DB] Marking doc ${doc.id} for deletion`);
-        writeBatch.delete(doc.ref);
+        console.log(`[DB] Marking doc ${doc.id} for soft deletion`);
+        writeBatch.update(doc.ref, {
+          deleted: true,
+          deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        });
       });
       await writeBatch.commit();
-      console.log(`[DB] Committed delete batch ${i + 1}/${batches.length}`);
+      console.log(`[DB] Committed soft delete batch ${i + 1}/${batches.length}`);
     }
     
     const duration = Date.now() - startTime;

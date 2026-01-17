@@ -36,8 +36,35 @@ export class WorkoutPage implements OnInit {
       return;
     }
 
+    this.loadWorkout(id);
+  }
+
+  private loadWorkout(id: string) {
     this.beatdownService.getBeatdown(id).subscribe({
       next: (workout) => {
+        if (!workout) {
+          // Beatdown is deleted or doesn't exist - try partial ID match
+          this.beatdownService.findBeatdownsByPartialId(id).subscribe({
+            next: (matchingBeatdowns) => {
+              if (matchingBeatdowns.length > 0) {
+                // Found a match - redirect to the correct URL
+                // Angular will re-initialize the component with the new route
+                const matchedId = matchingBeatdowns[0].id;
+                this.router.navigate(['/workout', matchedId], { replaceUrl: true });
+              } else {
+                // No match found
+                this.error = true;
+                this.loading = false;
+              }
+            },
+            error: (err) => {
+              console.error('Error searching for beatdown:', err);
+              this.error = true;
+              this.loading = false;
+            }
+          });
+          return;
+        }
         this.workout = workout;
         this.mapEmbedUrl = `https://maps.google.com/maps?q=${workout.lat},${workout.long}&t=m&z=16&output=embed`;
         this.directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${workout.lat},${workout.long}`;
