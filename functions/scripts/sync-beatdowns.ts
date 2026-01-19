@@ -18,6 +18,8 @@ const db = admin.firestore();
 // Cleanup deletes beatdowns that no longer exist in the API
 let ENABLE_CLEANUP = true;
 
+const TEN_SECONDS = 10000;
+
 // Types - New API Structure
 interface ApiEventType {
   eventTypeId: number;
@@ -56,7 +58,7 @@ interface ApiEvent {
   eventTypes?: Array<{
     eventTypeId: number;
     eventTypeName: string;
-  }>; // Only present when fetching individual events
+  }>;
 }
 
 interface ApiLocation {
@@ -113,7 +115,7 @@ interface Beatdown {
 
 // Constants
 const API_BASE_URL = 'https://api.f3nation.com';
-const EVENTS_URL = `${API_BASE_URL}/v1/event?pageSize=10000`; // Get all events in one request
+const EVENTS_URL = `${API_BASE_URL}/v1/event?pageSize=100000`; // Get all events in one request
 const LOCATIONS_URL = `${API_BASE_URL}/v1/location`; // Bulk endpoint for all locations
 const LOCATION_URL = `${API_BASE_URL}/v1/location/id`; // Individual location endpoint (fallback)
 // Get API key from environment variable - REQUIRED, no default
@@ -159,7 +161,7 @@ function parseRateLimitWaitTime(message: string): number {
     return parseInt(match[1], 10) * 1000; // Convert to milliseconds
   }
   // Default to 10 seconds if we can't parse it
-  return 10000;
+  return TEN_SECONDS;
 }
 
 // Helper function to make API calls with authentication and rate limit handling
@@ -174,7 +176,7 @@ async function fetchWithRetry<T>(url: string, params?: any, retryCount: number =
     if (error instanceof AxiosError && error.response?.status === 429) {
       const errorData = error.response.data as any;
       const message = errorData?.message || '';
-      const waitTime = message ? parseRateLimitWaitTime(message) : 10000; // Default 10 seconds
+      const waitTime = message ? parseRateLimitWaitTime(message) : TEN_SECONDS; // Default 10 seconds
       
       if (retryCount < maxRetries) {
         // Extract a short URL identifier for logging (just the endpoint, not full URL)
@@ -224,7 +226,7 @@ function transformEventToBeatdown(event: ApiEvent, location: ApiLocation): Beatd
       .filter(Boolean)
       .join(', ');
   
-  // Get event type name - eventTypes may be populated if event was fetched individually
+  // Get event type name
   const eventType = event.eventTypes?.[0]?.eventTypeName || 'Unknown';
   
   return {
@@ -389,7 +391,7 @@ async function fetchAndProcessLocation(locationId: number, locationMap?: Map<num
       locationEvents = eventsResponse.events.filter(e => e.locationId === locationId);
     }
     
-    // Transform events to beatdowns (without fetching individual event types for efficiency)
+    // Transform events to beatdowns
     return locationEvents.map(event => transformEventToBeatdown(event, location!));
   } catch (error) {
     // Don't log full error for rate limit errors (they're handled in fetchWithRetry)
@@ -526,9 +528,7 @@ async function main() {
       
       console.log(`Location map contains ${locationMap.size} locations (${uniqueLocationIds.length} needed by events)`);
 
-      // Events are already fetched with pageSize=10000, so we have all event data
-      // Note: eventTypes are not included in the list endpoint, so they'll be "Unknown"
-      // If event types are needed, we'd need to fetch them individually (adds ~6k requests)
+      // Events are already fetched with pageSize=100000, so we have all event data
       console.log('Transforming events to beatdowns...');
       const beatdowns: Beatdown[] = [];
       for (const event of events) {

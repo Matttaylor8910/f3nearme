@@ -8,5 +8,7 @@ export const environment = {
     messagingSenderId: '357811788369',
     appId: '1:357811788369:web:139530a2af2a34cd047670',
     measurementId: 'G-K1KK3EEV9H',
-  }
+  },
+  // Base URL for JSON data files served from Cloud Storage
+  dataUrl: 'https://storage.googleapis.com/f3-workout.appspot.com/data'
 };

@@ -8,6 +8,7 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { Request, Response } from 'express';
+import { Storage } from '@google-cloud/storage';
 
 interface MapWebhook {
   action: 'map.updated'|'map.deleted';
@@ -57,7 +58,7 @@ interface ApiEvent {
     regionName: string;
   }>;
   location: string; // Full address string
-  eventTypes?: ApiEventType[]; // Only in individual event fetch
+  eventTypes?: ApiEventType[]; // Now included in event list endpoint
 }
 
 interface ApiLocation {
@@ -112,6 +113,11 @@ interface Beatdown {
 }
 
 admin.initializeApp();
+
+// Cloud Storage Configuration
+const storage = new Storage();
+const BUCKET_NAME = process.env.GCLOUD_STORAGE_BUCKET || `${process.env.GCLOUD_PROJECT}.appspot.com`;
+const DATA_PREFIX = 'data';
 
 // API Configuration
 const API_BASE_URL = 'https://api.f3nation.com';
@@ -349,22 +355,9 @@ async function updateLocationBeatdowns(db: admin.firestore.Firestore, locationId
       existingDocs.set(doc.id, doc);
     });
 
-    // Fetch individual event details to get event types
-    console.log(`[DB] Fetching event details for ${events.length} events`);
-    const eventsWithTypes: ApiEvent[] = [];
-    for (const event of events) {
-      try {
-        const eventDetail = await fetchEventData(event.id);
-        eventsWithTypes.push(eventDetail);
-      } catch (error) {
-        console.warn(`[DB] Failed to fetch event ${event.id} details, using basic event data:`, error);
-        eventsWithTypes.push(event); // Fallback to basic event data
-      }
-    }
-
-    // Build the list of beatdowns to save and their docIds
-    console.log(`[DB] Processing ${eventsWithTypes.length} events from API for locationId: ${locationId}`);
-    const beatdownsToSave: { docId: string, beatdown: Beatdown }[] = eventsWithTypes.map((event: ApiEvent) => {
+    // Events from the list endpoint now include eventTypes, so no need to fetch individually
+    console.log(`[DB] Processing ${events.length} events from API for locationId: ${locationId}`);
+    const beatdownsToSave: { docId: string, beatdown: Beatdown }[] = events.map((event: ApiEvent) => {
       const beatdown = transformToBeatdown(location, event);
       const docId = generateBeatdownId(beatdown);
       console.log(`[DB] Transformed event ${event.id} ("${event.name}") to beatdown with docId: ${docId}`);
@@ -453,7 +446,7 @@ async function updateEventBeatdown(db: admin.firestore.Firestore, eventId: numbe
     const existingBeatdown = snapshot.docs[0].data() as Beatdown;
     console.log(`[DB] Found existing beatdown for eventId ${eventId}: locationId=${existingBeatdown.locationId}, docId=${snapshot.docs[0].id}`);
     
-    // Fetch the event details (includes event types)
+    // Fetch the event details (eventTypes are now included in individual event fetch)
     const event = await fetchEventData(eventId);
     
     // Fetch location details
@@ -975,6 +968,16 @@ export const mapWebhook = functions.https.onRequest(async (req: Request, res: Re
       if (actionTaken) {
         webhookLog.actionedAt = admin.firestore.FieldValue.serverTimestamp();
         console.log(`[WEBHOOK:${requestId}] Action completed successfully`);
+        
+        // Regenerate JSON cache after successful update
+        console.log(`[WEBHOOK:${requestId}] Triggering JSON cache regeneration`);
+        try {
+          await generateJsonCache(db);
+          console.log(`[WEBHOOK:${requestId}] JSON cache regenerated successfully`);
+        } catch (jsonError) {
+          console.error(`[WEBHOOK:${requestId}] Error regenerating JSON cache:`, jsonError);
+          // Don't fail the webhook if JSON generation fails
+        }
       }
       
     } else {
@@ -1030,3 +1033,111 @@ export const mapWebhook = functions.https.onRequest(async (req: Request, res: Re
     });
   }
 });
+
+/**
+ * Generate JSON cache file from Firestore and upload to Cloud Storage
+ * Creates: /data/all.json - all active beatdowns
+ */
+async function generateJsonCache(db: admin.firestore.Firestore): Promise<void> {
+  const startTime = Date.now();
+  console.log(`[JSON] Starting JSON cache generation`);
+  
+  try {
+    // Get all beatdowns from Firestore (we'll filter deleted in memory)
+    // Note: We can't use .where('deleted', '==', false) because it excludes
+    // documents where the 'deleted' field doesn't exist
+    const snapshot = await db.collection('beatdowns').get();
+    
+    console.log(`[JSON] Found ${snapshot.docs.length} total beatdowns in Firestore`);
+    
+    // Transform to beatdown objects, filter out deleted, and serialize timestamps
+    const beatdowns: Array<Beatdown & { id: string }> = snapshot.docs
+      .map(doc => {
+        const data = doc.data() as Beatdown;
+        return { ...data, id: doc.id };
+      })
+      .filter(bd => !bd.deleted) // Filter out deleted beatdowns (same as app does)
+      .map(bd => {
+        // Convert Firestore Timestamps to ISO strings for JSON serialization
+        const serialized: any = { ...bd };
+        if (serialized.lastUpdated && serialized.lastUpdated.toDate) {
+          serialized.lastUpdated = serialized.lastUpdated.toDate().toISOString();
+        } else if (serialized.lastUpdated instanceof Date) {
+          serialized.lastUpdated = serialized.lastUpdated.toISOString();
+        }
+        if (serialized.deletedAt && serialized.deletedAt.toDate) {
+          serialized.deletedAt = serialized.deletedAt.toDate().toISOString();
+        } else if (serialized.deletedAt instanceof Date) {
+          serialized.deletedAt = serialized.deletedAt.toISOString();
+        }
+        return serialized;
+      });
+    
+    console.log(`[JSON] Filtered to ${beatdowns.length} active beatdowns (excluded ${snapshot.docs.length - beatdowns.length} deleted)`);
+    
+    const bucket = storage.bucket(BUCKET_NAME);
+    
+    // Generate all.json - all beatdowns
+    const allJson = JSON.stringify(beatdowns, null, 2);
+    const allFile = bucket.file(`${DATA_PREFIX}/all.json`);
+    await allFile.save(allJson, {
+      contentType: 'application/json',
+      metadata: {
+        cacheControl: 'public, max-age=3600', // Cache for 1 hour
+      },
+    });
+    await allFile.makePublic();
+    console.log(`[JSON] Uploaded all.json (${beatdowns.length} beatdowns)`);
+    
+    const duration = Date.now() - startTime;
+    console.log(`[JSON] Successfully generated JSON cache in ${duration}ms`);
+    
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[JSON] Error generating JSON cache after ${duration}ms:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Callable function to manually regenerate JSON cache
+ */
+export const adminRegenerateJsonCache = functions.https.onCall(async (data) => {
+  const startTime = Date.now();
+  console.log(`[ADMIN] Regenerate JSON cache callable request`);
+  
+  try {
+    const db = admin.firestore();
+    await generateJsonCache(db);
+    
+    const duration = Date.now() - startTime;
+    console.log(`[ADMIN] Successfully regenerated JSON cache in ${duration}ms`);
+    
+    return {
+      message: 'JSON cache regenerated successfully',
+      duration
+    };
+    
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[ADMIN] Error regenerating JSON cache after ${duration}ms:`, error);
+    
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError('internal', error instanceof Error ? error.message : 'Failed to regenerate JSON cache');
+  }
+});
+
+/**
+ * Scheduled function to regenerate JSON cache hourly
+ */
+export const scheduledRegenerateJsonCache = functions.pubsub
+  .schedule('every 1 hours')
+  .timeZone('UTC')
+  .onRun(async (context) => {
+    console.log(`[SCHEDULED] Starting scheduled JSON cache regeneration`);
+    const db = admin.firestore();
+    await generateJsonCache(db);
+    console.log(`[SCHEDULED] Completed scheduled JSON cache regeneration`);
+  });

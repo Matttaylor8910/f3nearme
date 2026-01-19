@@ -72,13 +72,19 @@ client: f3nearme
           "regionName": "Yorkshire"
         }
       ],
-      "location": "Bramley Park, Leeds, West Yorkshire"
+      "location": "Bramley Park, Leeds, West Yorkshire",
+      "eventTypes": [
+        {
+          "eventTypeId": 1,
+          "eventTypeName": "Bootcamp"
+        }
+      ]
     }
   ]
 }
 ```
 
-**Note:** The event list endpoint does not include `eventTypes`. To get event types, you must fetch individual events using the event detail endpoint.
+**Note:** The event list endpoint now includes `eventTypes` in the response, so you can get event types directly from the list without fetching individual events.
 
 ## 2. Get Event by ID
 
@@ -197,7 +203,7 @@ client: f3nearme
 
 ## Usage Notes
 
-1. **Event Types:** Event types are only available when fetching individual events via `/v1/event/id/{id}`. The list endpoint (`/v1/event`) does not include event types.
+1. **Event Types:** Event types are now included in the event list endpoint (`/v1/event`), so you can access them directly without fetching individual events. The individual event endpoint (`/v1/event/id/{id}`) also includes event types.
 
 2. **Event Types typically include:**
    - Bootcamp (eventTypeId: 1)
@@ -248,14 +254,13 @@ interface Day {
 #### Backend Responsibilities
 The backend service should:
 
-1. Fetch all events using `GET /v1/event`
+1. Fetch all events using `GET /v1/event` (now includes `eventTypes`)
 2. Extract unique `locationId` values from events
 3. Fetch location details for each unique location using `GET /v1/location/id/{id}` to get coordinates
-4. For each event, optionally fetch individual event details using `GET /v1/event/id/{id}` to get event types
-5. Transform the API response data into `Beatdown` objects with the following fields:
+4. Transform the API response data into `Beatdown` objects with the following fields:
    - `dayOfWeek`: from event's `dayOfWeek`
    - `timeString`: formatted from event's `startTime` and `endTime` (e.g., "5:00 am - 6:00 am")
-   - `type`: from event's `eventTypes[0].eventTypeName` (requires individual event fetch)
+   - `type`: from event's `eventTypes[0].eventTypeName` (now included in list endpoint)
    - `region`: from event's `regions[0].regionName` or location's `regionName`
    - `website`: empty string (not provided by API)
    - `notes`: from event's `description`
@@ -286,12 +291,11 @@ The frontend webapp (`nearby.page.ts`) should:
 
 The sync script (`sync-beatdowns.ts`) imports F3 workout data into Firestore. This script:
 
-1. Fetches all events using `GET /v1/event`
+1. Fetches all events using `GET /v1/event` (includes `eventTypes`)
 2. Extracts unique location IDs from events
 3. Fetches location details for each unique location using `GET /v1/location/id/{id}`
-4. Fetches individual event details for each event using `GET /v1/event/id/{id}` to get event types
-5. Transforms the data into `Beatdown` objects
-6. Stores the beatdowns in Firestore
+4. Transforms the data into `Beatdown` objects (using `eventTypes` from the list endpoint)
+5. Stores the beatdowns in Firestore
 
 ### Setup
 
@@ -312,7 +316,7 @@ The sync script (`sync-beatdowns.ts`) imports F3 workout data into Firestore. Th
 ### Features
 
 - Processes events and locations in batches to avoid rate limiting
-- Fetches individual event details to get event types
+- Uses `eventTypes` directly from the event list endpoint (no individual fetches needed)
 - Uses Firestore batch writes for efficient data storage
 - Handles errors gracefully, logging issues without stopping the entire import
 - TypeScript for type safety

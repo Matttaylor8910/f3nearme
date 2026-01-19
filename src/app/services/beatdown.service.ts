@@ -1,19 +1,41 @@
 import { Injectable } from '@angular/core';
 import { AngularFirestore } from '@angular/fire/compat/firestore';
-import { Observable } from 'rxjs';
+import { Observable, from, of } from 'rxjs';
 import { Beatdown } from '../pages/nearby/nearby.page';
-import { map } from 'rxjs/operators';
+import { map, catchError } from 'rxjs/operators';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
+import { environment } from '../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class BeatdownService {
+  private dataUrl = environment.dataUrl;
+  private useJsonCache = true; // Toggle to fallback to Firestore if needed
+
   constructor(private readonly afs: AngularFirestore) {}
 
   /**
-   * Get beatdowns from Firestore
+   * Fetch JSON data from Cloud Storage
+   */
+  private fetchJsonData<T>(path: string): Observable<T> {
+    const url = `${this.dataUrl}/${path}`;
+    return from(fetch(url).then(res => {
+      if (!res.ok) {
+        throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+      }
+      return res.json() as Promise<T>;
+    })).pipe(
+      catchError(error => {
+        console.error(`Error fetching JSON from ${url}:`, error);
+        throw error;
+      })
+    );
+  }
+
+  /**
+   * Get beatdowns from JSON cache or Firestore fallback
    * If location parameters are provided, filters to beatdowns within the radius
    * Otherwise returns all beatdowns
    * Filters out deleted items
@@ -22,6 +44,30 @@ export class BeatdownService {
    * @param radiusMiles Optional radius in miles to search within
    */
   getNearbyBeatdowns(lat?: number, lng?: number, radiusMiles: number = 100): Observable<Beatdown[]> {
+    if (this.useJsonCache) {
+      return this.fetchJsonData<Array<Beatdown & { id: string }>>('all.json').pipe(
+        map(beatdowns => {
+          // Filter out deleted items (shouldn't be in JSON, but just in case)
+          const activeBeatdowns = beatdowns.filter(bd => !bd.deleted);
+          
+          if (lat === undefined || lng === undefined) {
+            return activeBeatdowns;
+          }
+          return activeBeatdowns.filter(bd => this.isWithinRadius(bd.lat, bd.long, lat, lng, radiusMiles));
+        }),
+        catchError(error => {
+          console.warn('Failed to fetch from JSON cache, falling back to Firestore:', error);
+          return this.getNearbyBeatdownsFromFirestore(lat, lng, radiusMiles);
+        })
+      );
+    }
+    return this.getNearbyBeatdownsFromFirestore(lat, lng, radiusMiles);
+  }
+
+  /**
+   * Get beatdowns from Firestore (fallback method)
+   */
+  private getNearbyBeatdownsFromFirestore(lat?: number, lng?: number, radiusMiles: number = 100): Observable<Beatdown[]> {
     return this.afs.collection<Beatdown>('beatdowns').snapshotChanges().pipe(
       map(actions => actions.map(a => {
         const data = a.payload.doc.data() as Beatdown;
@@ -41,10 +87,32 @@ export class BeatdownService {
   }
 
   /**
-   * Get a single beatdown by ID
+   * Get a single beatdown by ID from JSON cache or Firestore fallback
    * Returns null if beatdown is deleted or doesn't exist
    */
   getBeatdown(id: string): Observable<Beatdown | null> {
+    if (this.useJsonCache) {
+      return this.fetchJsonData<Array<Beatdown & { id: string }>>('all.json').pipe(
+        map(beatdowns => {
+          const beatdown = beatdowns.find(bd => bd.id === id);
+          if (!beatdown || beatdown.deleted) {
+            return null;
+          }
+          return beatdown;
+        }),
+        catchError(error => {
+          console.warn('Failed to fetch from JSON cache, falling back to Firestore:', error);
+          return this.getBeatdownFromFirestore(id);
+        })
+      );
+    }
+    return this.getBeatdownFromFirestore(id);
+  }
+
+  /**
+   * Get a single beatdown by ID from Firestore (fallback method)
+   */
+  private getBeatdownFromFirestore(id: string): Observable<Beatdown | null> {
     return this.afs.doc<Beatdown>(`beatdowns/${id}`).snapshotChanges().pipe(
       map(action => {
         if (!action.payload.exists) {
@@ -61,10 +129,32 @@ export class BeatdownService {
   }
 
   /**
-   * Get all beatdowns at a specific lat long
+   * Get all beatdowns at a specific lat long from JSON cache or Firestore fallback
    * Filters out deleted items
    */
   getBeatdownsByLatLong(lat: number, long: number): Observable<Beatdown[]> {
+    if (this.useJsonCache) {
+      return this.fetchJsonData<Array<Beatdown & { id: string }>>('all.json').pipe(
+        map(beatdowns => {
+          return beatdowns.filter(bd => 
+            !bd.deleted && 
+            bd.lat === lat && 
+            bd.long === long
+          );
+        }),
+        catchError(error => {
+          console.warn('Failed to fetch from JSON cache, falling back to Firestore:', error);
+          return this.getBeatdownsByLatLongFromFirestore(lat, long);
+        })
+      );
+    }
+    return this.getBeatdownsByLatLongFromFirestore(lat, long);
+  }
+
+  /**
+   * Get all beatdowns at a specific lat long from Firestore (fallback method)
+   */
+  private getBeatdownsByLatLongFromFirestore(lat: number, long: number): Observable<Beatdown[]> {
     return this.afs.collection<Beatdown>('beatdowns', ref => 
       ref.where('lat', '==', lat).where('long', '==', long)
     ).snapshotChanges().pipe(
@@ -78,12 +168,31 @@ export class BeatdownService {
   }
 
   /**
-   * Find beatdowns whose ID contains the given partial ID
+   * Find beatdowns whose ID contains the given partial ID from JSON cache or Firestore fallback
    * Useful for finding beatdowns when the exact ID doesn't match
    * Filters out deleted items
    * @param partialId Partial ID to search for
    */
   findBeatdownsByPartialId(partialId: string): Observable<Beatdown[]> {
+    if (this.useJsonCache) {
+      return this.fetchJsonData<Array<Beatdown & { id: string }>>('all.json').pipe(
+        map(beatdowns => {
+          // Filter out deleted items and find IDs that contain the partial ID
+          return beatdowns.filter(bd => !bd.deleted && bd.id.includes(partialId));
+        }),
+        catchError(error => {
+          console.warn('Failed to fetch from JSON cache, falling back to Firestore:', error);
+          return this.findBeatdownsByPartialIdFromFirestore(partialId);
+        })
+      );
+    }
+    return this.findBeatdownsByPartialIdFromFirestore(partialId);
+  }
+
+  /**
+   * Find beatdowns whose ID contains the given partial ID from Firestore (fallback method)
+   */
+  private findBeatdownsByPartialIdFromFirestore(partialId: string): Observable<Beatdown[]> {
     return this.afs.collection<Beatdown>('beatdowns').snapshotChanges().pipe(
       map(actions => actions.map(a => {
         const data = a.payload.doc.data() as Beatdown;
@@ -120,12 +229,32 @@ export class BeatdownService {
 
   /**
    * Get beatdowns incrementally based on lastSyncDate
-   * If lastSyncDate is null, returns all beatdowns (first load)
-   * Otherwise, returns only beatdowns updated since lastSyncDate
+   * If lastSyncDate is null, returns all beatdowns (first load) from JSON cache
+   * Otherwise, falls back to Firestore for incremental updates
    * Filters out deleted items
    * @param lastSyncDate Optional date to get beatdowns updated after this date
    */
   getBeatdownsIncremental(lastSyncDate: Date | null): Observable<Beatdown[]> {
+    if (lastSyncDate === null) {
+      // First load: get all beatdowns from JSON cache
+      if (this.useJsonCache) {
+        return this.fetchJsonData<Array<Beatdown & { id: string }>>('all.json').pipe(
+          map(beatdowns => beatdowns.filter(bd => !bd.deleted)),
+          catchError(error => {
+            console.warn('Failed to fetch from JSON cache, falling back to Firestore:', error);
+            return this.getBeatdownsIncrementalFromFirestore(null);
+          })
+        );
+      }
+    }
+    // Incremental load: must use Firestore for timestamp queries
+    return this.getBeatdownsIncrementalFromFirestore(lastSyncDate);
+  }
+
+  /**
+   * Get beatdowns incrementally from Firestore (fallback method)
+   */
+  private getBeatdownsIncrementalFromFirestore(lastSyncDate: Date | null): Observable<Beatdown[]> {
     if (lastSyncDate === null) {
       // First load: get all beatdowns, filter out deleted
       return this.afs.collection<Beatdown>('beatdowns').snapshotChanges().pipe(
