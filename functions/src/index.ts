@@ -94,6 +94,11 @@ interface EventsResponse {
   events: ApiEvent[];
 }
 
+interface LocationsResponse {
+  locations: ApiLocation[];
+  totalCount?: number;
+}
+
 interface Beatdown {
   dayOfWeek: string;
   timeString: string;
@@ -1141,3 +1146,293 @@ export const scheduledRegenerateJsonCache = functions.pubsub
     await generateJsonCache(db);
     console.log(`[SCHEDULED] Completed scheduled JSON cache regeneration`);
   });
+
+/**
+ * Helper function to delay execution
+ */
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Helper function to make API calls with retry logic for rate limits
+ */
+async function fetchWithRetry(url: string, retryCount: number = 0, maxRetries: number = 3): Promise<any> {
+  try {
+    const response = await fetch(url, {
+      headers: API_HEADERS
+    });
+    
+    if (!response.ok) {
+      if (response.status === 429) {
+        // Rate limit - wait and retry
+        const waitTime = 10000; // 10 seconds default
+        if (retryCount < maxRetries) {
+          console.log(`⏳ Rate limit exceeded. Waiting ${waitTime / 1000}s before retry ${retryCount + 1}/${maxRetries}...`);
+          await delay(waitTime);
+          return fetchWithRetry(url, retryCount + 1, maxRetries);
+        } else {
+          throw new Error(`Rate limit exceeded after ${maxRetries} retries`);
+        }
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    if (retryCount < maxRetries && error instanceof Error && error.message.includes('Rate limit')) {
+      const waitTime = 10000;
+      await delay(waitTime);
+      return fetchWithRetry(url, retryCount + 1, maxRetries);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Helper function to normalize values for comparison
+ */
+function normalizeValue(val: any): any {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'number') {
+    // For integers (locationId, eventId), compare as integers
+    if (Number.isInteger(val)) {
+      return val;
+    }
+    // For floats (lat, long), round to 5 decimal places (~1.1 meters precision)
+    return Math.round(val * 100000) / 100000;
+  }
+  // Convert to string and trim for string comparison
+  return String(val).trim();
+}
+
+/**
+ * Helper function to check if two coordinates are effectively the same
+ */
+function coordinatesAreEqual(lat1: number, long1: number, lat2: number, long2: number): boolean {
+  const normalizedLat1 = normalizeValue(lat1);
+  const normalizedLong1 = normalizeValue(long1);
+  const normalizedLat2 = normalizeValue(lat2);
+  const normalizedLong2 = normalizeValue(long2);
+  
+  // If normalized values match, they're equal
+  if (normalizedLat1 === normalizedLat2 && normalizedLong1 === normalizedLong2) {
+    return true;
+  }
+  
+  // Calculate distance in meters (Haversine formula approximation for small distances)
+  const latDiff = Math.abs(lat1 - lat2) * 111000;
+  const longDiff = Math.abs(long1 - long2) * 111000 * Math.cos((lat1 + lat2) / 2 * Math.PI / 180);
+  const distance = Math.sqrt(latDiff * latDiff + longDiff * longDiff);
+  
+  // Consider coordinates equal if within 10 meters
+  return distance < 10;
+}
+
+/**
+ * Helper function to compare beatdowns and check if they're different
+ */
+function beatdownsAreEqual(bd1: Beatdown, bd2: Beatdown): boolean {
+  return (
+    normalizeValue(bd1.dayOfWeek) === normalizeValue(bd2.dayOfWeek) &&
+    normalizeValue(bd1.timeString) === normalizeValue(bd2.timeString) &&
+    normalizeValue(bd1.type) === normalizeValue(bd2.type) &&
+    normalizeValue(bd1.region) === normalizeValue(bd2.region) &&
+    normalizeValue(bd1.website) === normalizeValue(bd2.website) &&
+    normalizeValue(bd1.notes) === normalizeValue(bd2.notes) &&
+    normalizeValue(bd1.name) === normalizeValue(bd2.name) &&
+    normalizeValue(bd1.address) === normalizeValue(bd2.address) &&
+    coordinatesAreEqual(bd1.lat, bd1.long, bd2.lat, bd2.long)
+  );
+}
+
+/**
+ * Full sync function that replicates the sync-beatdowns.ts script
+ * Fetches all events and locations from API, compares with Firestore,
+ * and only writes changes. Also cleans up deleted beatdowns.
+ */
+async function syncAllBeatdowns(db: admin.firestore.Firestore): Promise<void> {
+  const startTime = Date.now();
+  console.log(`[SYNC] Starting full beatdown sync`);
+  
+  try {
+    // Fetch all existing beatdowns
+    console.log(`[SYNC] Fetching existing beatdowns from Firestore...`);
+    const existingBeatdownsSnapshot = await db.collection('beatdowns').get();
+    const existingBeatdowns = new Map<string, Beatdown>();
+    existingBeatdownsSnapshot.forEach((doc) => {
+      existingBeatdowns.set(doc.id, doc.data() as Beatdown);
+    });
+    console.log(`[SYNC] Found ${existingBeatdowns.size} existing beatdowns in Firestore`);
+
+    // Fetch all events from API
+    console.log(`[SYNC] Fetching events from API...`);
+    const EVENTS_URL = `${API_BASE_URL}/v1/event?pageSize=100000`;
+    const eventsResponse = await fetchWithRetry(EVENTS_URL) as EventsResponse;
+    const events = eventsResponse.events;
+    console.log(`[SYNC] Found ${events.length} events in API`);
+
+    // Fetch all locations from API
+    console.log(`[SYNC] Fetching locations from API...`);
+    const LOCATIONS_URL = `${API_BASE_URL}/v1/location`;
+    const locationsResponse = await fetchWithRetry(LOCATIONS_URL) as LocationsResponse;
+    const locationMap = new Map<number, ApiLocation>();
+    for (const location of locationsResponse.locations) {
+      locationMap.set(location.id, location);
+    }
+    console.log(`[SYNC] Fetched ${locationMap.size} locations from API`);
+
+    // Transform events to beatdowns
+    console.log(`[SYNC] Transforming events to beatdowns...`);
+    const beatdowns: Beatdown[] = [];
+    for (const event of events) {
+      const location = locationMap.get(event.locationId);
+      if (location) {
+        beatdowns.push(transformToBeatdown(location, event));
+      } else {
+        console.warn(`[SYNC] Location ${event.locationId} not found for event ${event.id}`);
+      }
+    }
+    console.log(`[SYNC] Transformed ${beatdowns.length} beatdowns`);
+
+    // Compare beatdowns and find changes
+    console.log(`[SYNC] Comparing beatdowns with existing data...`);
+    const beatdownsToWrite: Beatdown[] = [];
+    let newBeatdowns = 0;
+    let updatedBeatdowns = 0;
+    let skippedUnchanged = 0;
+    const processedIds = new Set<string>();
+
+    for (const beatdown of beatdowns) {
+      const docId = generateBeatdownId(beatdown);
+      processedIds.add(docId);
+      
+      const existingBeatdown = existingBeatdowns.get(docId);
+      
+      if (!existingBeatdown) {
+        // New beatdown
+        beatdownsToWrite.push(beatdown);
+        newBeatdowns++;
+      } else if (!beatdownsAreEqual(existingBeatdown, beatdown)) {
+        // Changed beatdown
+        beatdownsToWrite.push(beatdown);
+        updatedBeatdowns++;
+      } else if (!existingBeatdown.lastUpdated) {
+        // Unchanged but missing lastUpdated - add it
+        beatdownsToWrite.push(beatdown);
+        updatedBeatdowns++;
+      } else {
+        // Unchanged - skip
+        skippedUnchanged++;
+      }
+    }
+
+    console.log(`[SYNC] Found ${beatdownsToWrite.length} beatdowns to write (${newBeatdowns} new, ${updatedBeatdowns} updated, ${skippedUnchanged} unchanged)`);
+
+    // Write beatdowns in batches
+    if (beatdownsToWrite.length > 0) {
+      const beatdownBatches = chunkArray(beatdownsToWrite, BATCH_SIZE);
+      
+      for (const [batchIndex, beatdownBatch] of beatdownBatches.entries()) {
+        console.log(`[SYNC] Writing batch ${batchIndex + 1}/${beatdownBatches.length} (${beatdownBatch.length} beatdowns)`);
+        
+        const batch = db.batch();
+        for (const beatdown of beatdownBatch) {
+          const docId = generateBeatdownId(beatdown);
+          const docRef = db.collection('beatdowns').doc(docId);
+          batch.set(docRef, {
+            ...beatdown,
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        }
+        await batch.commit();
+      }
+    } else {
+      console.log(`[SYNC] No beatdowns need to be written - all are up to date`);
+    }
+
+    // Cleanup: Soft delete beatdowns that no longer exist in API
+    console.log(`[SYNC] Cleaning up deleted beatdowns...`);
+    const docsToDelete = Array.from(existingBeatdowns.keys()).filter(id => !processedIds.has(id));
+    
+    if (docsToDelete.length > 0) {
+      console.log(`[SYNC] Found ${docsToDelete.length} beatdowns to soft delete`);
+      const deleteBatches = chunkArray(docsToDelete, BATCH_SIZE);
+      
+      for (const [deleteBatchIndex, deleteBatch] of deleteBatches.entries()) {
+        console.log(`[SYNC] Soft deleting batch ${deleteBatchIndex + 1}/${deleteBatches.length} (${deleteBatch.length} documents)`);
+        const batch = db.batch();
+        deleteBatch.forEach(docId => {
+          const docRef = db.collection('beatdowns').doc(docId);
+          batch.update(docRef, {
+            deleted: true,
+            deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+          });
+        });
+        await batch.commit();
+      }
+      console.log(`[SYNC] Successfully soft deleted ${docsToDelete.length} beatdowns`);
+    } else {
+      console.log(`[SYNC] No beatdowns to delete - all existing beatdowns are still valid`);
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(`[SYNC] Sync completed successfully in ${duration}ms`);
+    console.log(`[SYNC] Summary: ${newBeatdowns} new, ${updatedBeatdowns} updated, ${skippedUnchanged} unchanged, ${docsToDelete.length} deleted`);
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[SYNC] Error during sync after ${duration}ms:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Scheduled function to sync all beatdowns hourly (equivalent to running npm run sync)
+ */
+export const scheduledSyncAllBeatdowns = functions.pubsub
+  .schedule('every 1 hours')
+  .timeZone('UTC')
+  .onRun(async (context) => {
+    console.log(`[SCHEDULED] Starting scheduled beatdown sync`);
+    const db = admin.firestore();
+    await syncAllBeatdowns(db);
+    console.log(`[SCHEDULED] Completed scheduled beatdown sync`);
+    
+    // Also regenerate JSON cache after sync
+    console.log(`[SCHEDULED] Regenerating JSON cache after sync`);
+    await generateJsonCache(db);
+    console.log(`[SCHEDULED] Completed JSON cache regeneration`);
+  });
+
+/**
+ * Callable function to manually trigger full sync
+ */
+export const adminSyncAllBeatdowns = functions.https.onCall(async (data) => {
+  const startTime = Date.now();
+  console.log(`[ADMIN] Sync all beatdowns callable request`);
+  
+  try {
+    const db = admin.firestore();
+    await syncAllBeatdowns(db);
+    
+    // Also regenerate JSON cache after sync
+    await generateJsonCache(db);
+    
+    const duration = Date.now() - startTime;
+    console.log(`[ADMIN] Successfully completed sync and JSON cache regeneration in ${duration}ms`);
+    
+    return {
+      message: 'Sync completed successfully',
+      duration
+    };
+    
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[ADMIN] Error during sync after ${duration}ms:`, error);
+    
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError('internal', error instanceof Error ? error.message : 'Failed to sync beatdowns');
+  }
+});
