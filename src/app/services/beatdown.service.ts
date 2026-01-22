@@ -12,7 +12,7 @@ import { environment } from '../../environments/environment';
 })
 export class BeatdownService {
   private dataUrl = environment.dataUrl;
-  private useJsonCache = true; // Toggle to fallback to Firestore if needed
+  private useJsonCache = false; // Toggle to fallback to Firestore if needed
 
   constructor(private readonly afs: AngularFirestore) {}
 
